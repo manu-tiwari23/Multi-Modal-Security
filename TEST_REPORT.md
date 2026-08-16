@@ -1,0 +1,30 @@
+# TEST_REPORT.md
+
+Log of test results, one entry per feature, added *before* checking it off in `TODO.md`. This is what makes "tested before moving to the next feature" verifiable rather than just claimed.
+
+## Log
+
+| Date | Module | Feature | Test Type | Result | Notes |
+|---|---|---|---|---|---|
+| _(none yet)_ | | | | | |
+
+**Test Type** — one of: `unit`, `integration`, `manual`
+**Result** — one of: `Pass`, `Fail`, `Pass with issues` (if it works but a bug was logged in `BUGS.md`)
+
+---
+
+## Example Entry
+
+```
+| 2026-08-20 | soc | Log ingestion service normalizes syslog into common event schema | unit | Pass | 12/12 tests passing, covers malformed input |
+| 2026-08-20 | soc | Ingested events appear in OpenSearch within 2s | integration | Pass | Verified manually with sample syslog stream |
+| 2026-08-21 | honeypot | Cowrie session data publishes to event bus | integration | Pass with issues | Works, but timestamp timezone bug — logged as B002 |
+```
+
+## How to Use This File
+
+1. Implement the feature
+2. Write and run tests (unit and/or integration as appropriate)
+3. Add a row here with the real result — log failures too, don't only record passes
+4. If it passed (or passed with a logged issue), check it off in `TODO.md` and add an entry to `CHANGELOG.md`
+5. If it failed, keep working — don't move to the next feature until this resolves or you've explicitly decided to defer it (log the deferral in `DECISIONS.md`)
