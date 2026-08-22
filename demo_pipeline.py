@@ -24,6 +24,9 @@ from src.soc.correlation.engine import CorrelationEngine
 from src.soc.scoring.calculator import score_incident
 from src.soc.alerting.alert_model import Alert, priority_from_score
 from src.soc.alerting.manager import AlertManager
+from src.honeypot.server import DeceptionService
+from src.honeypot.normalizer import normalise_command_record, normalise_artifact_record, normalise_session_to_event
+from src.honeypot.behavior import BehaviorAnalyzer, ARCHETYPES
 
 
 # -- ANSI colour codes -----------------------------------------------------
@@ -334,7 +337,7 @@ def main() -> None:
             print(f"    FINAL RISK SCORE: {alert.risk_score:.1f}/100{C.RESET}")
 
     # -- Test summary ------------------------------------------------------
-    banner("UNIT TEST COVERAGE (107 tests)", C.BLUE)
+    banner("UNIT TEST COVERAGE (142 tests)", C.BLUE)
 
     suites = [
         ("shared/test_event_schema.py", 11, "Event schema + serialisation"),
@@ -343,6 +346,13 @@ def main() -> None:
         ("soc/test_correlation.py",      9, "Correlation engine"),
         ("soc/test_scoring.py",         27, "Risk scoring calculator"),
         ("soc/test_alerting.py",        24, "Alert manager"),
+        ("honeypot/test_models.py",      5, "Honeypot session & artifact models"),
+        ("honeypot/test_recorder.py",    8, "Memory-bounded session recorder"),
+        ("honeypot/test_server.py",      5, "Sandboxed virtual shell & server"),
+        ("honeypot/test_normalizer.py",  5, "Honeypot event normalizer"),
+        ("honeypot/test_cowrie_parser.py", 5, "Cowrie JSON stream parser"),
+        ("honeypot/test_behavior.py",    6, "Attacker behavior & TTP clustering"),
+        ("honeypot/test_integration.py", 1, "Cross-modal SOC+Honeypot correlation"),
     ]
     total = 0
     for path, count, desc in suites:

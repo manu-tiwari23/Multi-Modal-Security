@@ -124,10 +124,10 @@ class AlertManager:
             primary_entity=incident.primary_entity,
             event_count=incident.event_count,
             event_ids=list(incident.event_ids),
-            rule_ids=[rm.rule_id for rm in incident.rule_matches],
-            mitre_tactics=list(incident.mitre_tactics),
-            mitre_techniques=list(incident.mitre_techniques),
-            tags=list(incident.tags),
+            rule_ids=list(dict.fromkeys(rm.rule_id for rm in incident.rule_matches)),
+            mitre_tactics=list(dict.fromkeys(incident.mitre_tactics)),
+            mitre_techniques=list(dict.fromkeys(incident.mitre_techniques)),
+            tags=list(dict.fromkeys(incident.tags)),
         )
 
         # Store for dedup
@@ -157,10 +157,10 @@ class AlertManager:
         alert.severity = incident.severity
         alert.event_count = incident.event_count
         alert.event_ids = list(incident.event_ids)
-        alert.rule_ids = [rm.rule_id for rm in incident.rule_matches]
-        alert.mitre_tactics = list(incident.mitre_tactics)
-        alert.mitre_techniques = list(incident.mitre_techniques)
-        alert.tags = list(incident.tags)
+        alert.rule_ids = list(dict.fromkeys(rm.rule_id for rm in incident.rule_matches))
+        alert.mitre_tactics = list(dict.fromkeys(incident.mitre_tactics))
+        alert.mitre_techniques = list(dict.fromkeys(incident.mitre_techniques))
+        alert.tags = list(dict.fromkeys(incident.tags))
         alert.description = self._build_description(incident, breakdown)
         alert.updated_at = datetime.now(timezone.utc)
 

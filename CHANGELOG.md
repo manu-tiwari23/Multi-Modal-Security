@@ -10,6 +10,13 @@ All notable changes to MMS are logged here, one entry per completed and tested f
 - SOC: Correlation engine with sliding-window entity linking (`ip`, `user`, `host`, `hash`), multi-stage attack aggregation, severity escalation, and chronological timeline generation
 - SOC: Transparent risk scoring calculator (0-100) with documented weighted formula — base severity + event frequency + MITRE breadth + asset criticality + threat intel + multi-source bonus — and per-component `ScoreBreakdown` for analyst explainability
 - SOC: Alert Manager with incident-to-alert deduplication, P1–P4 priority bucketing (score thresholds 80/50/25), configurable noise floor (`min_score_to_alert`), pluggable `on_alert` callback for Redis Streams/OpenSearch publishing, and full-pipeline end-to-end integration (correlation → scoring → alerting)
+- Honeypot: Deceptive service subsystem with `VirtualShell` sandboxed command emulation (`uname`, `whoami`, `cat /etc/passwd`, `wget`, etc.) and `DeceptionService`
+- Honeypot: Memory-bounded thread-safe `SessionRecorder` for tracking interactive credential attempts, commands, and payload artifacts
+- Honeypot: `CowrieLogParser` for decoding raw Cowrie JSON log streams into honeypot sessions and normalized events
+- Honeypot: Event normalizer converting honeypot interactions into canonical `SecurityEvent` models (`source: honeypot`) with automatic MITRE ATT&CK tagging (`T1110`, `T1059`, `T1105`, `T1082`, `T1548.003`)
+- Honeypot: `BehaviorAnalyzer` for clustering sessions by MITRE TTPs, building `AttackerProfile` aggregations, and categorizing attack campaign archetypes (Automated Dropper, Interactive Recon, Multi-Stage Intrusion)
+- Honeypot: Cross-modal correlation with SOC engine awarding multi-source risk score bonus (+5.0)
+- Dashboard: Upgraded React command center with 5 dedicated views: SOC Alerts & Incidents with auditable Score Breakdown drawer, Honeypot Deception & Campaign Archetype clusters, Live Telemetry feed, Sigma Rules catalog, and Interactive Real-Time Attack Simulator
 
 ### Changed
 - _(nothing yet)_

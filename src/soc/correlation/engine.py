@@ -61,6 +61,11 @@ class CorrelationEngine:
         """Return list of all currently open/investigating incidents."""
         return [inc for inc in self._incidents.values() if inc.status in ("open", "investigating")]
 
+    @property
+    def active_incident_count(self) -> int:
+        """Return total count of active open/investigating incidents."""
+        return len(self.active_incidents)
+
     def get_incident(self, incident_id: str) -> Incident | None:
         """Get an incident by ID."""
         return self._incidents.get(incident_id)

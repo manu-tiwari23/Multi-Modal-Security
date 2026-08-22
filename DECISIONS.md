@@ -97,6 +97,18 @@ Format: one entry per decision, newest at the bottom.
 
 ---
 
+## D011 — Deceptive Honeypot Architecture: Sandboxed Emulation, Normalization, and TTP Clustering
+
+**Date:** 2026-08-22
+**Decision:** The Honeypot module operates on three decoupled layers:
+1. **Deception & Ingestion**: A sandboxed virtual shell (`VirtualShell`) that emulates Linux command responses (`uname`, `whoami`, `cat /etc/passwd`, `wget`, etc.) without executing host binaries, paired with a memory-bounded `SessionRecorder` (limiting active sessions, max commands, and credentials) and a `CowrieLogParser` for real Cowrie JSON feeds.
+2. **Canonical Normalization**: Maps honeypot interactions into standard `SecurityEvent` models (`source: "honeypot"`) with MITRE ATT&CK technique tags (`T1110`, `T1059`, `T1105`, `T1082`, `T1548.003`), flowing into the unified event bus (`events:raw`).
+3. **Behavior Analysis**: Downstream `BehaviorAnalyzer` clusters attacker sessions by TTP categories and maps attackers to campaign archetypes (`Automated Dropper`, `Interactive Recon`, `Targeted Multi-Stage`, `Credential Brute Force`).
+**Why:** Complies with `AGENTS.md` and `SKILL.md` strict safety requirements (honeypot isolated from real hosts/credentials), guarantees honeypot events flow through the same pipeline as SOC logs, and unlocks cross-modal correlation bonuses (+5.0) in the SOC risk scoring engine.
+**Status:** Final
+
+---
+
 ## Template for New Entries
 
 ```

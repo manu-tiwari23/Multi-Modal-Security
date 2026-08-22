@@ -75,7 +75,7 @@ _Add new variables here the moment they're introduced in code._
 |---|---|
 | SOC | Phase 2 complete — normalization, detection, correlation, scoring, alerting all implemented and tested (107 unit tests) |
 | AI Copilot | Not started |
-| Honeypot | Not started |
+| Honeypot | Phase 3 complete — deceptive virtual shell, bounded recorder, Cowrie parser, event normalizer, TTP clustering, & cross-modal correlation tested (35 unit tests) |
 | Phishing Detection | Not started |
 | Digital Forensics | Not started |
 | Threat Intelligence | Not started |

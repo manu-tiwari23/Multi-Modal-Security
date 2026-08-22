@@ -15,6 +15,7 @@ Log of test results, one entry per feature, added *before* checking it off in `T
 | 2026-08-22 | soc | Sliding-window correlation engine & multi-stage incident tracking | unit | Pass | 9/9 tests passing (56/56 total unit tests) |
 | 2026-08-22 | soc | Transparent risk scoring calculator (weighted formula + explainability) | unit | Pass | 27/27 tests passing (83/83 total unit tests) |
 | 2026-08-22 | soc | Alert Manager (dedup, priority, threshold, callback, full pipeline) | unit | Pass | 24/24 tests passing (107/107 total unit tests) |
+| 2026-08-22 | honeypot | Deceptive service, bounded session recorder, Cowrie parser, event normalizer, TTP clustering, & cross-modal correlation | unit | Pass | 35/35 tests passing (142/142 total unit tests) |
 
 **Test Type** — one of: `unit`, `integration`, `manual`
 **Result** — one of: `Pass`, `Fail`, `Pass with issues` (if it works but a bug was logged in `BUGS.md`)

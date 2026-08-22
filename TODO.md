@@ -4,17 +4,19 @@ Single source of truth for build progress. Update this every time a feature star
 
 ## Currently Working On
 
-**Phase 2 — SOC: COMPLETE ✅**
+**Phase 3 — Honeypot: COMPLETE ✅**
 
-All Phase 2 SOC features are implemented and tested (107/107 unit tests passing):
+All Phase 3 Honeypot features are implemented and tested (142/142 total unit tests passing):
 
-- [x] Log normalization (syslog: SSH auth, firewall, sudo, sessions)
-- [x] Rule-based detection engine (Sigma-style YAML rules, 21 tests)
-- [x] Correlation engine (sliding-window, multi-stage aggregation, 9 tests)
-- [x] Risk scoring (weighted formula + explainability, 27 tests)
-- [x] Alert manager (dedup, priority, threshold, callback, full pipeline, 24 tests)
+- [x] Data models (`src/honeypot/models.py`)
+- [x] Memory-bounded session recorder (`src/honeypot/recorder.py`)
+- [x] Safe deceptive virtual shell (`src/honeypot/server.py`)
+- [x] Cowrie JSON log parser (`src/honeypot/cowrie_parser.py`)
+- [x] Honeypot event normalizer (`src/honeypot/normalizer.py`)
+- [x] Attacker behavior analyzer & TTP clustering (`src/honeypot/behavior.py`)
+- [x] Honeypot unit & cross-modal correlation integration tests (`tests/honeypot/`) (35/35 passing)
 
-**Next:** Phase 3 — Honeypot
+**Next:** Phase 4 — AI Copilot
 
 ---
 
@@ -37,10 +39,10 @@ Work top to bottom. Do not start a module's later features before its earlier on
 - [x] Alert manager (dedupe, prioritize, publish to dashboard)
 
 ### Phase 3 — Honeypot (can run parallel to Phase 4+)
-- [ ] Deploy one deceptive service (e.g. Cowrie SSH honeypot)
-- [ ] Session recorder → normalized event → event bus
-- [ ] Confirm honeypot events show up correlated in SOC dashboard
-- [ ] Attacker behavior clustering view
+- [x] Deploy one deceptive service (e.g. Cowrie SSH honeypot)
+- [x] Session recorder → normalized event → event bus
+- [x] Confirm honeypot events show up correlated in SOC dashboard
+- [x] Attacker behavior clustering view
 
 ### Phase 4 — AI Copilot (needs Phase 1–2 data to be useful)
 - [ ] Retrieval layer: query OpenSearch for relevant logs/incidents
