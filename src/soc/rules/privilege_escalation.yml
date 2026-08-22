@@ -1,0 +1,23 @@
+id: SOC-RULE-002
+title: Suspicious Sudo Privilege Escalation Command
+description: Detects execution of high-risk shell spawns or sensitive file access using sudo.
+severity: high
+status: stable
+tags:
+  - attack.t1548.003
+  - attack.privilege_escalation
+  - platform.linux
+falsepositives:
+  - Authorized system administrator maintenance tasks
+detection:
+  selection:
+    event_type: privilege_escalation
+    raw.command|contains:
+      - /bin/bash
+      - /bin/sh
+      - /bin/zsh
+      - visudo
+      - /etc/shadow
+      - passwd root
+      - chmod 777
+  condition: selection

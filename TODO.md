@@ -4,16 +4,17 @@ Single source of truth for build progress. Update this every time a feature star
 
 ## Currently Working On
 
-**Phase 1 — Core Pipeline (Completed & Verified)**
+**Phase 2 — SOC: COMPLETE ✅**
 
-All 5 items in Phase 1 implemented, tested, and verified end-to-end:
-- 31/31 unit & integration tests passing
-- Redis Streams pub/sub verified
-- OpenSearch indexing and query API verified
-- Log ingestion normaliser verified
-- React + Vite dashboard build verified
+All Phase 2 SOC features are implemented and tested (107/107 unit tests passing):
 
-**Resume notes:** Phase 1 complete. Ready to proceed with Phase 2 (SOC log normalization, Sigma rules, correlation engine, and risk scoring).
+- [x] Log normalization (syslog: SSH auth, firewall, sudo, sessions)
+- [x] Rule-based detection engine (Sigma-style YAML rules, 21 tests)
+- [x] Correlation engine (sliding-window, multi-stage aggregation, 9 tests)
+- [x] Risk scoring (weighted formula + explainability, 27 tests)
+- [x] Alert manager (dedup, priority, threshold, callback, full pipeline, 24 tests)
+
+**Next:** Phase 3 — Honeypot
 
 ---
 
@@ -29,11 +30,11 @@ Work top to bottom. Do not start a module's later features before its earlier on
 - [x] Build minimal dashboard that shows raw ingested events (proves the pipeline end-to-end)
 
 ### Phase 2 — SOC
-- [ ] Log normalization for at least one real source
-- [ ] Rule-based detection engine (basic Sigma-style rules)
-- [ ] Correlation engine (group related events into an incident)
-- [ ] Risk scoring
-- [ ] Alert manager (dedupe, prioritize, publish to dashboard)
+- [x] Log normalization for at least one real source (syslog: SSH auth, firewall, sudo, sessions)
+- [x] Rule-based detection engine (basic Sigma-style rules)
+- [x] Correlation engine (group related events into an incident)
+- [x] Risk scoring
+- [x] Alert manager (dedupe, prioritize, publish to dashboard)
 
 ### Phase 3 — Honeypot (can run parallel to Phase 4+)
 - [ ] Deploy one deceptive service (e.g. Cowrie SSH honeypot)

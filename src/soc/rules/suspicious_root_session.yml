@@ -1,0 +1,17 @@
+id: SOC-RULE-005
+title: Interactive Root Session Opened
+description: Detects direct interactive root sessions opened on a host, excluding background cron jobs.
+severity: medium
+status: stable
+tags:
+  - attack.t1078.003
+  - attack.privilege_escalation
+falsepositives:
+  - Authorized administrative maintenance
+detection:
+  selection:
+    event_type: session_open
+    entity.user: root
+  filter:
+    raw.service: cron
+  condition: selection and not filter

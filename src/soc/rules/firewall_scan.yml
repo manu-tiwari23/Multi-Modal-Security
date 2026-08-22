@@ -1,0 +1,20 @@
+id: SOC-RULE-003
+title: Firewall Port Scan / Excessive Blocked Packets
+description: Detects rapid sequence of dropped or blocked network connections originating from a single IP address.
+severity: medium
+status: stable
+tags:
+  - attack.t1046
+  - attack.discovery
+  - network.firewall
+falsepositives:
+  - Misconfigured client network application
+detection:
+  selection:
+    event_type: firewall_block
+  threshold:
+    count: 10
+    timeframe: 30
+    by:
+      - entity.ip
+  condition: selection

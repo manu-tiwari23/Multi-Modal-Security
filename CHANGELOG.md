@@ -5,6 +5,21 @@ All notable changes to MMS are logged here, one entry per completed and tested f
 ## [Unreleased]
 
 ### Added
+- SOC: Rule-based detection engine supporting Sigma-style YAML rules, field modifiers, MITRE ATT&CK tagging, and sliding-window threshold tracking
+- SOC: Default Sigma rule pack in `src/soc/rules/` (SSH brute force, sudo escalation, firewall port scan, invalid user auth, suspicious root session)
+- SOC: Correlation engine with sliding-window entity linking (`ip`, `user`, `host`, `hash`), multi-stage attack aggregation, severity escalation, and chronological timeline generation
+- SOC: Transparent risk scoring calculator (0-100) with documented weighted formula — base severity + event frequency + MITRE breadth + asset criticality + threat intel + multi-source bonus — and per-component `ScoreBreakdown` for analyst explainability
+- SOC: Alert Manager with incident-to-alert deduplication, P1–P4 priority bucketing (score thresholds 80/50/25), configurable noise floor (`min_score_to_alert`), pluggable `on_alert` callback for Redis Streams/OpenSearch publishing, and full-pipeline end-to-end integration (correlation → scoring → alerting)
+
+### Changed
+- _(nothing yet)_
+
+### Fixed
+- Tests: marked `test_api_e2e.py` with `@pytest.mark.integration` to isolate pure unit tests
+
+## [0.1.0] - 2026-08-17
+
+### Added
 - Core: common event schema (`SecurityEvent` Pydantic model) with JSON round-trip and OpenSearch serialisation
 - Core: Docker Compose infrastructure (Redis, OpenSearch, OpenSearch Dashboards, PostgreSQL, MinIO, Mosquitto)
 - Core: Redis Streams event bus client (publisher + consumer-group consumer)
@@ -15,12 +30,6 @@ All notable changes to MMS are logged here, one entry per completed and tested f
 - Dashboard: React + Vite minimal event feed with live WebSocket, severity stats, glassmorphism dark theme
 - Tools: synthetic syslog generator (`tools/generate_logs.py`) with weighted event distribution
 - Infra: `.env.example`, `pyproject.toml`, `requirements.txt`
-
-### Changed
-- _(nothing yet)_
-
-### Fixed
-- _(nothing yet)_
 
 ---
 

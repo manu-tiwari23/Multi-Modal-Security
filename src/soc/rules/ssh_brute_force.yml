@@ -1,0 +1,22 @@
+id: SOC-RULE-001
+title: SSH Brute Force Authentication Attempts
+description: Detects multiple failed SSH authentication attempts from the same source IP within a 60-second window.
+severity: high
+status: stable
+tags:
+  - attack.t1110
+  - attack.credential_access
+  - service.ssh
+falsepositives:
+  - Legitimate user forgetting password multiple times
+  - Automated scanner on honeypot (expected)
+detection:
+  selection:
+    event_type: auth_failure
+    raw.service: sshd
+  threshold:
+    count: 5
+    timeframe: 60
+    by:
+      - entity.ip
+  condition: selection

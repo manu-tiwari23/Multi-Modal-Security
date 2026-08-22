@@ -4,6 +4,9 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from src.api.main import app
 
+# Mark as integration test requiring live services
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.asyncio
 async def test_api_gateway_e2e():

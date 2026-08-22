@@ -61,6 +61,42 @@ Format: one entry per decision, newest at the bottom.
 
 ---
 
+## D007 — Sigma-style YAML detection rules & sliding-window threshold tracking
+
+**Date:** 2026-08-22
+**Decision:** Store detection rules as declarative Sigma-style YAML files in `src/soc/rules/` with standard field modifiers (`|contains`, `|re`, `|startswith`, `|endswith`, `|in`) and MITRE ATT&CK tagging. Support both immediate single-event conditions and sliding-window threshold aggregations (`count` within `timeframe` grouped by entity fields).
+**Why:** Keeps detection rules data-driven and easily extensible without modifying Python code. Enables security analysts to author, hot-reload, and test new detection patterns independently.
+**Status:** Final
+
+---
+
+## D008 — Sliding-window entity correlation (300s default window)
+
+**Date:** 2026-08-22
+**Decision:** The Correlation Engine maintains active incidents in memory and links incoming `SecurityEvent` and `RuleMatch` objects across multi-modal sources using a configurable 300-second (5 minutes) sliding window per entity key (`ip`, `user`, `host`, `hash`). Incident severity dynamically escalates to the highest severity observed across all correlated events, and attack progression is maintained as a chronologically sorted `IncidentTimelineEntry` list.
+**Why:** Automatically groups distributed attack stages (e.g. brute force auth failure -> successful logon -> privilege escalation) into a coherent, single incident investigation unit without alert fragmentation.
+**Status:** Final
+
+---
+
+## D009 — Transparent weighted risk scoring formula
+
+**Date:** 2026-08-22
+**Decision:** Risk scoring uses a documented additive weighted formula: Base Severity (10/25/50/75) + Event Frequency (log2 scale, capped at 10) + MITRE Technique Breadth (3 pts each, capped at 15) + Critical User Bonus (8 for root/admin/system) + Critical Host Bonus (5 for prod/dc/firewall hosts) + Threat Intel Match (7) + Multi-Source Correlation (5). Clamped to 0–100. Every component is recorded in a `ScoreBreakdown` dataclass with `to_dict()` and `explain()` methods for full analyst transparency.
+**Why:** ARCHITECTURE.md §4.1 and SOC SKILL.md require an explainable, auditable scoring formula — analysts must see *why* a score is what it is, not just the number. An additive weighted sum (vs a black-box model) satisfies this with clear documentation.
+**Status:** Final
+
+---
+
+## D010 — Alert Manager deduplication and priority bucketing strategy
+
+**Date:** 2026-08-22
+**Decision:** Alert Manager deduplicates by `incident_id` — if the same incident produces a new rule match or additional events, the existing alert is updated rather than creating a duplicate. Priority uses fixed score thresholds: ≥80 → P1-critical, ≥50 → P2-high, ≥25 → P3-medium, <25 → P4-low. A configurable `min_score_to_alert` (default 15.0) suppresses noise from benign low-severity events. Publishing to Redis Streams / OpenSearch / dashboard is done via a pluggable `on_alert(alert, is_new)` callback.
+**Why:** SOC analysts need stable, deduplicated alerts rather than a flood of notifications per-event. The callback pattern allows the alert manager to remain infrastructure-agnostic — unit-testable without Redis/OpenSearch.
+**Status:** Final
+
+---
+
 ## Template for New Entries
 
 ```

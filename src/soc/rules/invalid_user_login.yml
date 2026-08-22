@@ -1,0 +1,16 @@
+id: SOC-RULE-004
+title: SSH Login Attempt for Non-Existent User Account
+description: Detects SSH authentication attempts targeting non-existent or invalid accounts, indicating credential discovery or spraying.
+severity: medium
+status: stable
+tags:
+  - attack.t1078
+  - attack.initial_access
+  - service.ssh
+falsepositives:
+  - User typing incorrect username
+detection:
+  selection:
+    event_type: auth_failure
+    raw.action: invalid_user
+  condition: selection

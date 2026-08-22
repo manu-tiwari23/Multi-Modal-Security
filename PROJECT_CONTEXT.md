@@ -2,7 +2,7 @@
 
 Living document. Update this as the project evolves — it should always reflect the *current real state*, not the plan. The agent reads this at the start of every session.
 
-_Last updated: 2026-08-17 — update this line every time you edit the file_
+_Last updated: 2026-08-22 — update this line every time you edit the file_
 
 ## Tech Stack (current, as actually implemented)
 
@@ -73,7 +73,7 @@ _Add new variables here the moment they're introduced in code._
 
 | Module | Status |
 |---|---|
-| SOC | Phase 1 complete (ingestion + normaliser) |
+| SOC | Phase 2 complete — normalization, detection, correlation, scoring, alerting all implemented and tested (107 unit tests) |
 | AI Copilot | Not started |
 | Honeypot | Not started |
 | Phishing Detection | Not started |
@@ -87,6 +87,7 @@ _Update per-module status as features land — keep this in sync with `TODO.md`,
 
 ## Known Constraints
 
+- SOC Correlation Engine sliding window: 300 seconds (5 minutes) per entity (`ip`, `user`, `host`, `hash`)
 - Honeypot must remain network-isolated from anything real (see `AGENTS.md` guardrails)
 - ESP32 receives severity/type metadata only, never raw data
 - All containment actions require human approval — no fully autonomous response
