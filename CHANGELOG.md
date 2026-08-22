@@ -5,7 +5,16 @@ All notable changes to MMS are logged here, one entry per completed and tested f
 ## [Unreleased]
 
 ### Added
-- _(nothing yet)_
+- Core: common event schema (`SecurityEvent` Pydantic model) with JSON round-trip and OpenSearch serialisation
+- Core: Docker Compose infrastructure (Redis, OpenSearch, OpenSearch Dashboards, PostgreSQL, MinIO, Mosquitto)
+- Core: Redis Streams event bus client (publisher + consumer-group consumer)
+- Core: centralised config via `pydantic-settings` + `.env`
+- SOC: syslog normaliser (SSH auth, firewall, sudo, session, system error classification)
+- SOC: log ingestion service (file-watching, normalise → Redis Streams → OpenSearch)
+- API: FastAPI gateway with REST `/api/events` + WebSocket `/api/events/live` (Redis relay)
+- Dashboard: React + Vite minimal event feed with live WebSocket, severity stats, glassmorphism dark theme
+- Tools: synthetic syslog generator (`tools/generate_logs.py`) with weighted event distribution
+- Infra: `.env.example`, `pyproject.toml`, `requirements.txt`
 
 ### Changed
 - _(nothing yet)_

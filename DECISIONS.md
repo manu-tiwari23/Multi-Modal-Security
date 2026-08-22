@@ -43,12 +43,21 @@ Format: one entry per decision, newest at the bottom.
 
 ---
 
-## D005 — Event bus choice: Redis Streams vs Kafka
+## D005 — Event bus choice: Redis Streams
 
-**Date:** [fill in when decided]
-**Decision:** [Redis Streams / Kafka — pending]
-**Why:** [fill in — e.g. Redis Streams is lighter for project scale; Kafka chosen if demonstrating production-grade infra is a goal]
-**Status:** Open — resolve before Phase 1 ingestion work begins, then update `PROJECT_CONTEXT.md`
+**Date:** 2026-08-17
+**Decision:** Redis Streams (not Kafka).
+**Why:** Single container (redis:7-alpine) vs Kafka + ZooKeeper/KRaft. Sufficient throughput for the project's single-host, demo/portfolio scale. Simpler consumer-group API for Python services. Redis is also useful as a cache/session store later.
+**Status:** Final
+
+---
+
+## D006 — Python runtime: Windows CPython 3.11
+
+**Date:** 2026-08-17
+**Decision:** Use Windows-native CPython 3.11 (`C:\Users\manut\AppData\Local\Programs\Python\Python311`) for the venv, not the MSYS2/MinGW Python 3.14 that's first on PATH.
+**Why:** MSYS2 Python can't build Rust-based wheels (pydantic-core, watchfiles) — the `maturin` build backend reports "Unsupported platform: mingw_x86_64_ucrt_gnu". CPython 3.11 has pre-built wheels for all deps.
+**Status:** Final
 
 ---
 

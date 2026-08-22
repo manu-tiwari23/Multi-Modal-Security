@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multi-modal-security"
+version = "0.1.0"
+description = "An integrated cybersecurity platform — SOC, AI Copilot, Honeypot, Phishing Detection, Digital Forensics, Threat Intelligence, Incident Response, ESP32 Physical Alerts."
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "integration: tests that require running Docker services (Redis, OpenSearch, etc.)",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

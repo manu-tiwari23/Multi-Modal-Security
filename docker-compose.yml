@@ -1,0 +1,148 @@
+# =============================================================================
+# Multi Modal Security (MMS) — Docker Compose
+# =============================================================================
+# Brings up all infrastructure services for local development.
+# Usage:
+#   docker compose up -d              # start everything
+#   docker compose logs -f redis      # tail a specific service
+#   docker compose down -v            # tear down and remove volumes
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Event Bus — Redis (Streams)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: mms-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mms-network
+
+  # ---------------------------------------------------------------------------
+  # Log / Alert Store — OpenSearch (single-node, security disabled for dev)
+  # ---------------------------------------------------------------------------
+  opensearch:
+    image: opensearchproject/opensearch:2.17.0
+    container_name: mms-opensearch
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - bootstrap.memory_lock=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - mms-network
+
+  # ---------------------------------------------------------------------------
+  # OpenSearch Dashboards (optional — useful for inspecting indices)
+  # ---------------------------------------------------------------------------
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.17.0
+    container_name: mms-opensearch-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+      - mms-network
+
+  # ---------------------------------------------------------------------------
+  # Relational Store — PostgreSQL
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: mms-postgres
+    environment:
+      POSTGRES_USER: mms
+      POSTGRES_PASSWORD: mms_dev_password
+      POSTGRES_DB: mms
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mms"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mms-network
+
+  # ---------------------------------------------------------------------------
+  # Object Storage — MinIO (S3-compatible)
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio
+    container_name: mms-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mms-network
+
+  # ---------------------------------------------------------------------------
+  # MQTT Broker — Mosquitto (for ESP32 physical alert system)
+  # ---------------------------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mms-mosquitto
+    ports:
+      - "1883:1883"
+      - "9002:9001"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    networks:
+      - mms-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  redis-data:
+  opensearch-data:
+  postgres-data:
+  minio-data:
+  mosquitto-data:
+  mosquitto-log:
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  mms-network:
+    driver: bridge

@@ -1,0 +1,21 @@
+# Secrets — never commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Docker volumes if ever bind-mounted locally
+mosquitto/data/
+mosquitto/log/
+
+# OS/editor cruft
+.DS_Store
+*.log

@@ -2,14 +2,14 @@
 
 Living document. Update this as the project evolves — it should always reflect the *current real state*, not the plan. The agent reads this at the start of every session.
 
-_Last updated: [DATE] — update this line every time you edit the file_
+_Last updated: 2026-08-17 — update this line every time you edit the file_
 
 ## Tech Stack (current, as actually implemented)
 
 | Layer | Chosen | Notes |
 |---|---|---|
 | Language(s) | Python (backend services), JavaScript/React (frontend) | |
-| Event bus | [Redis Streams / Kafka — fill in once decided, see DECISIONS.md] | |
+| Event bus | Redis Streams (redis:7-alpine) | Decided in D005 — see DECISIONS.md |
 | Log/alert store | OpenSearch | |
 | Relational store | PostgreSQL | |
 | Object storage | MinIO | |
@@ -73,7 +73,7 @@ _Add new variables here the moment they're introduced in code._
 
 | Module | Status |
 |---|---|
-| SOC | Not started |
+| SOC | Phase 1 complete (ingestion + normaliser) |
 | AI Copilot | Not started |
 | Honeypot | Not started |
 | Phishing Detection | Not started |
@@ -81,7 +81,7 @@ _Add new variables here the moment they're introduced in code._
 | Threat Intelligence | Not started |
 | Incident Response | Not started |
 | Physical Alert (ESP32) | Not started |
-| Dashboard | Not started |
+| Dashboard | Phase 1 complete (live event feed) |
 
 _Update per-module status as features land — keep this in sync with `TODO.md`, this is just the high-level view._
 

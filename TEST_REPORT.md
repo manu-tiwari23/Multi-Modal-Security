@@ -6,7 +6,11 @@ Log of test results, one entry per feature, added *before* checking it off in `T
 
 | Date | Module | Feature | Test Type | Result | Notes |
 |---|---|---|---|---|---|
-| _(none yet)_ | | | | | |
+| 2026-08-17 | shared | SecurityEvent schema creation, validation, JSON round-trip | unit | Pass | 11/11 tests passing |
+| 2026-08-17 | soc | Syslog normaliser — all event types + malformed input | unit | Pass | 15/15 tests passing (fixed session_open regex) |
+| 2026-08-17 | soc | Redis Streams pub/sub + OpenSearch indexing | integration | Pass | 4/4 integration tests passing against live containers |
+| 2026-08-17 | api | FastAPI REST endpoints (/api/health, /api/events filtering) | integration | Pass | Verified against live OpenSearch index |
+| 2026-08-17 | dashboard | React + Vite frontend production bundle | unit | Pass | Production build compiled cleanly |
 
 **Test Type** — one of: `unit`, `integration`, `manual`
 **Result** — one of: `Pass`, `Fail`, `Pass with issues` (if it works but a bug was logged in `BUGS.md`)

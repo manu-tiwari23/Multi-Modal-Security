@@ -4,9 +4,16 @@ Single source of truth for build progress. Update this every time a feature star
 
 ## Currently Working On
 
-_Nothing yet — pick the first item below to start._
+**Phase 1 — Core Pipeline (Completed & Verified)**
 
-**Resume notes:** (fill in if a session ends mid-feature — what's done, what's left)
+All 5 items in Phase 1 implemented, tested, and verified end-to-end:
+- 31/31 unit & integration tests passing
+- Redis Streams pub/sub verified
+- OpenSearch indexing and query API verified
+- Log ingestion normaliser verified
+- React + Vite dashboard build verified
+
+**Resume notes:** Phase 1 complete. Ready to proceed with Phase 2 (SOC log normalization, Sigma rules, correlation engine, and risk scoring).
 
 ---
 
@@ -15,11 +22,11 @@ _Nothing yet — pick the first item below to start._
 Work top to bottom. Do not start a module's later features before its earlier ones are tested, unless a module is explicitly parallel (marked below).
 
 ### Phase 1 — Core Pipeline (foundation, do first)
-- [ ] Define common event schema (JSON structure used by all modules)
-- [ ] Stand up event bus (Redis Streams/Kafka) via Docker Compose
-- [ ] Stand up OpenSearch, Postgres, MinIO via Docker Compose
-- [ ] Build basic log ingestion service → event bus → OpenSearch
-- [ ] Build minimal dashboard that shows raw ingested events (proves the pipeline end-to-end)
+- [x] Define common event schema (JSON structure used by all modules)
+- [x] Stand up event bus (Redis Streams) via Docker Compose
+- [x] Stand up OpenSearch, Postgres, MinIO via Docker Compose
+- [x] Build basic log ingestion service → event bus → OpenSearch
+- [x] Build minimal dashboard that shows raw ingested events (proves the pipeline end-to-end)
 
 ### Phase 2 — SOC
 - [ ] Log normalization for at least one real source
