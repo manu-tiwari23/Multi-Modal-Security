@@ -16,6 +16,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -44,6 +45,14 @@ from src.honeypot.normalizer import (
     normalise_session_to_event,
 )
 from src.honeypot.behavior import BehaviorAnalyzer
+from src.copilot.models import CopilotQuery
+from src.copilot.retrieval import LogRetriever, IncidentRetriever, ThreatIntelRetriever
+from src.copilot.report_generator import IncidentReportGenerator
+from src.copilot.tools import ToolExecutor, OPENAI_TOOLS
+from src.copilot.orchestrator import CopilotOrchestrator
+from src.phishing.email_analyzer import EmailAnalyzer, EmailParser
+from src.phishing.url_scanner import URLScanner
+from src.phishing.models import PhishingVerdict, ParsedEmail
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +74,23 @@ behavior_analyzer = BehaviorAnalyzer()
 # In-memory recent events ring buffer (for dev fallback when OpenSearch is offline)
 RECENT_EVENTS_BUFFER: list[SecurityEvent] = []
 MAX_BUFFER_SIZE = 500
+
+# AI Copilot Subsystem Initialization
+log_retriever = LogRetriever(opensearch_client=None, memory_buffer=RECENT_EVENTS_BUFFER)
+incident_retriever = IncidentRetriever(correlation_engine)
+threat_intel_retriever = ThreatIntelRetriever(honeypot_recorder=session_recorder)
+report_generator = IncidentReportGenerator(incident_retriever, threat_intel_retriever)
+tool_executor = ToolExecutor(log_retriever, incident_retriever, threat_intel_retriever, report_generator)
+copilot_orchestrator = CopilotOrchestrator(tool_executor)
+
+# Phishing Detection Subsystem Initialization
+phishing_url_scanner = URLScanner()
+phishing_email_analyzer = EmailAnalyzer(url_scanner=phishing_url_scanner)
+phishing_stats = {
+    "total_emails_scanned": 0,
+    "total_urls_scanned": 0,
+    "phishing_detected_count": 0,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +177,7 @@ async def ingest_pipeline_event(event: SecurityEvent) -> dict[str, Any]:
             "active_incidents": correlation_engine.active_incident_count,
             "honeypot_sessions": len(session_recorder.get_active_sessions()) + len(session_recorder.get_closed_sessions()),
             "rules_loaded": len(loaded_rules),
+            "phishing_scans": phishing_stats["total_emails_scanned"] + phishing_stats["total_urls_scanned"],
         },
     }
     await manager.broadcast(json.dumps(payload))
@@ -240,15 +267,28 @@ app.add_middleware(
 )
 
 
+_os_client: Optional[OpenSearch] = None
+_last_os_check: float = 0.0
+_OS_CHECK_INTERVAL: float = 15.0
+
+
 def _get_os() -> Optional[OpenSearch]:
+    global _os_client, _last_os_check
+    now = time.monotonic()
+    if _os_client is not None:
+        return _os_client
+    if now - _last_os_check < _OS_CHECK_INTERVAL:
+        return None
+    _last_os_check = now
     try:
         client = OpenSearch(
             hosts=[settings.opensearch_url],
             use_ssl=False,
             verify_certs=False,
-            timeout=2,
+            timeout=1,
         )
         if client.ping():
+            _os_client = client
             return client
     except Exception:
         pass
@@ -270,6 +310,7 @@ async def health():
         "active_incidents": correlation_engine.active_incident_count,
         "active_alerts": alert_manager.alert_count,
         "honeypot_sessions": len(session_recorder.get_active_sessions()) + len(session_recorder.get_closed_sessions()),
+        "phishing_scans": phishing_stats["total_emails_scanned"] + phishing_stats["total_urls_scanned"],
     }
 
 
@@ -478,6 +519,28 @@ async def simulate_attack(req: SimulationRequest):
             res_hp = await ingest_pipeline_event(ev_hp_sess)
             events_generated.append(res_hp)
 
+    if req.scenario in ("phishing", "phishing_campaign", "multistage"):
+        # 4. Phishing Spearphishing Ingress targeting internal employee
+        simulated_phishing_raw = (
+            f"From: security-alerts@paypal.com.account-verification.xyz\r\n"
+            f"To: analyst@prod-web-01\r\n"
+            f"Subject: URGENT: Account Security Breach Detected within 24 hours!\r\n\r\n"
+            f"Dear Employee,\r\n\r\n"
+            f"Suspicious activity was identified originating from IP {attacker_ip}.\r\n"
+            f"You must verify credentials immediately or account access will be terminated:\r\n"
+            f"http://xn--pypal-4ve.com/auth/login-verify.exe\r\n\r\n"
+            f"Security Operations Center"
+        )
+        parsed_email = EmailParser.parse_raw_string(simulated_phishing_raw)
+        phish_verdict = phishing_email_analyzer.analyze(parsed_email)
+        ev_phish = phishing_email_analyzer.to_security_event(phish_verdict, parsed_email)
+        # Link entity to attacker IP and targeted host
+        ev_phish.entity.ip = attacker_ip
+        ev_phish.entity.host = "prod-web-01"
+        ev_phish.timestamp = now - timedelta(seconds=10)
+        res_phish = await ingest_pipeline_event(ev_phish)
+        events_generated.append(res_phish)
+
     # Return summary of resulting pipeline state
     active_alerts = alert_manager.get_all_alerts(sort_by_score=True)
     return {
@@ -488,14 +551,132 @@ async def simulate_attack(req: SimulationRequest):
         "top_alert": active_alerts[0].model_dump(mode="json") if active_alerts else None,
     }
 
-    # Return summary of resulting pipeline state
-    active_alerts = alert_manager.get_all_alerts(sort_by_score=True)
+
+# ---------------------------------------------------------------------------
+# REST Endpoints — Phase 4 AI Security Copilot
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/copilot/chat")
+async def copilot_chat(query: CopilotQuery):
+    """Interact with the AI Security Copilot with RAG and OpenAI tool calling."""
+    # Ensure log_retriever has current OpenSearch client connection
+    log_retriever.os_client = _get_os()
+    resp = copilot_orchestrator.ask(query)
+    return resp.model_dump(mode="json")
+
+
+@app.get("/api/copilot/tools")
+async def get_copilot_tools():
+    """List available OpenAI tool calling definitions."""
+    return {"count": len(OPENAI_TOOLS), "tools": OPENAI_TOOLS}
+
+
+class ReportRequest(BaseModel):
+    incident_id: str
+
+
+@app.post("/api/copilot/reports/generate")
+async def generate_incident_report(req: ReportRequest):
+    """Generate a structured, evidence-grounded incident report."""
+    report = report_generator.generate_report(req.incident_id)
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Incident '{req.incident_id}' not found")
+
     return {
-        "scenario": req.scenario,
-        "attacker_ip": attacker_ip,
-        "events_ingested": len(events_generated),
-        "total_active_alerts": len(active_alerts),
-        "top_alert": active_alerts[0].model_dump(mode="json") if active_alerts else None,
+        "report": report.model_dump(mode="json"),
+        "markdown": report.to_markdown(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# REST Endpoints — Phase 5 Phishing Detection
+# ---------------------------------------------------------------------------
+
+
+class URLScanRequest(BaseModel):
+    url: str
+    source_user: Optional[str] = None
+    publish_to_pipeline: bool = True
+
+
+class EmailScanRequest(BaseModel):
+    raw_email: Optional[str] = None
+    subject: Optional[str] = None
+    sender: Optional[str] = None
+    recipient: Optional[str] = None
+    body: Optional[str] = None
+    publish_to_pipeline: bool = True
+
+
+@app.post("/api/phishing/scan/url")
+async def scan_phishing_url(req: URLScanRequest):
+    """Scan a target URL for phishing indicators, lookalikes, and threat reputation."""
+    if not req.url or not req.url.strip():
+        raise HTTPException(status_code=400, detail="Target URL must not be empty.")
+
+    verdict = phishing_url_scanner.scan_url(req.url)
+    phishing_stats["total_urls_scanned"] += 1
+    if verdict.is_phishing:
+        phishing_stats["phishing_detected_count"] += 1
+
+    pipeline_res = None
+    if req.publish_to_pipeline:
+        event = phishing_url_scanner.to_security_event(verdict, source_user=req.source_user)
+        pipeline_res = await ingest_pipeline_event(event)
+
+    return {
+        "verdict": verdict.to_dict(),
+        "pipeline": pipeline_res,
+    }
+
+
+@app.post("/api/phishing/scan/email")
+async def scan_phishing_email(req: EmailScanRequest):
+    """Analyze an email for phishing indicators, header anomalies, brand spoofing, and links."""
+    if req.raw_email:
+        parsed = EmailParser.parse_raw_string(req.raw_email)
+    elif req.body or req.subject or req.sender:
+        raw_msg = (
+            f"From: {req.sender or 'unknown@external.net'}\r\n"
+            f"To: {req.recipient or 'user@target.corp'}\r\n"
+            f"Subject: {req.subject or '(No Subject)'}\r\n\r\n"
+            f"{req.body or ''}"
+        )
+        parsed = EmailParser.parse_raw_string(raw_msg)
+    else:
+        raise HTTPException(status_code=400, detail="Either raw_email or body/subject/sender must be provided.")
+
+    verdict = phishing_email_analyzer.analyze(parsed)
+    phishing_stats["total_emails_scanned"] += 1
+    if verdict.is_phishing:
+        phishing_stats["phishing_detected_count"] += 1
+
+    pipeline_res = None
+    if req.publish_to_pipeline:
+        event = phishing_email_analyzer.to_security_event(verdict, parsed)
+        pipeline_res = await ingest_pipeline_event(event)
+
+    return {
+        "verdict": verdict.to_dict(),
+        "pipeline": pipeline_res,
+    }
+
+
+@app.get("/api/phishing/stats")
+async def get_phishing_stats():
+    """Get aggregated statistics on phishing scans, cache entries, and detections."""
+    provider_name = (
+        phishing_url_scanner.threat_intel.__class__.__name__
+        if hasattr(phishing_url_scanner, "threat_intel") and phishing_url_scanner.threat_intel
+        else "SyntheticBlocklistProvider"
+    )
+    return {
+        "total_emails_scanned": phishing_stats["total_emails_scanned"],
+        "total_urls_scanned": phishing_stats["total_urls_scanned"],
+        "phishing_detected_count": phishing_stats["phishing_detected_count"],
+        "cache_entries": len(phishing_url_scanner.cache),
+        "threat_intel_providers": [provider_name],
     }
 
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Navigation from './components/Navigation.jsx'
+import CopilotView from './components/CopilotView.jsx'
 import AlertsView from './components/AlertsView.jsx'
 import HoneypotView from './components/HoneypotView.jsx'
 import EventFeed from './components/EventFeed.jsx'
@@ -9,7 +10,7 @@ import SimulatorView from './components/SimulatorView.jsx'
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/events/live`
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('alerts')
+  const [activeTab, setActiveTab] = useState('copilot')
   const [events, setEvents] = useState([])
   const [liveAlerts, setLiveAlerts] = useState([])
   const [connected, setConnected] = useState(false)
@@ -183,6 +184,7 @@ export default function App() {
 
       {/* Main Tab Views */}
       <main className="main-content">
+        {activeTab === 'copilot' && <CopilotView />}
         {activeTab === 'alerts' && <AlertsView alerts={liveAlerts} />}
         {activeTab === 'honeypot' && <HoneypotView />}
         {activeTab === 'events' && <EventFeed events={events} />}

@@ -12,7 +12,10 @@ Known issues tracker. Log a bug the moment you find one, even if you don't fix i
 
 | ID | Module | Description | Severity | Found | Resolved | Fix Summary |
 |---|---|---|---|---|---|---|
-| _(none yet)_ | | | | | | |
+| B001 | api | `test_api_e2e` health assertion failed on enriched metrics payload and lacked live OpenSearch ping guard | Low | 2026-10-04 | 2026-10-04 | Validated specific health keys and added OpenSearch ping skip guard |
+| B002 | api | Duplicate return block in /api/simulate/attack endpoint | Low | 2026-10-04 | 2026-10-04 | Removed duplicated unreachable return block in simulate_attack handler |
+| B003 | phishing | `URLScanner.to_security_event` passed unmapped `safe` severity to `SecurityEvent`, causing Pydantic validation failure | Medium | 2026-10-06 | 2026-10-06 | Added severity mapping (`SAFE` -> `low`) and removed invalid `url` field from `Entity` |
+| B004 | phishing | Unescaped non-ASCII Cyrillic homoglyphs in lookalike evidence caused `UnicodeEncodeError` on Windows consoles | Medium | 2026-10-06 | 2026-10-06 | Enforced `safe_ascii()` unicode codepoint escaping across all lookalike signal descriptions and evidence |
 
 ---
 

@@ -4,19 +4,14 @@ Single source of truth for build progress. Update this every time a feature star
 
 ## Currently Working On
 
-**Phase 3 — Honeypot: COMPLETE ✅**
+**Phase 5 — Phishing Detection: IN PROGRESS (2/4 Features Implemented & Tested)**
 
-All Phase 3 Honeypot features are implemented and tested (142/142 total unit tests passing):
+- [x] Email header/content analyzer (`src/phishing/models.py`, `src/phishing/email_analyzer.py`) — Tested (41 unit tests, 272/272 total passing)
+- [x] URL reputation scanner (`src/phishing/url_scanner.py`) — Tested (50 unit tests, 322/322 total passing)
+- [ ] Attachment analyzer
+- [ ] Explanation generator (why it scored the way it did)
 
-- [x] Data models (`src/honeypot/models.py`)
-- [x] Memory-bounded session recorder (`src/honeypot/recorder.py`)
-- [x] Safe deceptive virtual shell (`src/honeypot/server.py`)
-- [x] Cowrie JSON log parser (`src/honeypot/cowrie_parser.py`)
-- [x] Honeypot event normalizer (`src/honeypot/normalizer.py`)
-- [x] Attacker behavior analyzer & TTP clustering (`src/honeypot/behavior.py`)
-- [x] Honeypot unit & cross-modal correlation integration tests (`tests/honeypot/`) (35/35 passing)
-
-**Next:** Phase 4 — AI Copilot
+**Next:** Phase 5, Feature 3 — Attachment analyzer
 
 ---
 
@@ -45,27 +40,27 @@ Work top to bottom. Do not start a module's later features before its earlier on
 - [x] Attacker behavior clustering view
 
 ### Phase 4 — AI Copilot (needs Phase 1–2 data to be useful)
-- [ ] Retrieval layer: query OpenSearch for relevant logs/incidents
-- [ ] Tool-calling setup with OpenAI API
-- [ ] Tool: query_logs()
-- [ ] Tool: get_incident()
-- [ ] Tool: lookup_ioc()
-- [ ] Tool: draft_report()
-- [ ] Response composer with citations
+- [x] Retrieval layer: query OpenSearch for relevant logs/incidents
+- [x] Tool-calling setup with OpenAI API
+- [x] Tool: query_logs()
+- [x] Tool: get_incident()
+- [x] Tool: lookup_ioc()
+- [x] Tool: draft_report()
+- [x] Response composer with citations
 
 ### Phase 5 — Phishing Detection (can run parallel)
-- [ ] Email header/content analyzer
-- [ ] URL reputation scanner
+- [x] Email header/content analyzer
+- [x] URL reputation scanner
 - [ ] Attachment analyzer
 - [ ] Explanation generator (why it scored the way it did)
 
 ### Phase 6 — Digital Forensics (can run parallel, mostly standalone)
-- [ ] Evidence intake + hashing + chain-of-custody record
-- [ ] File-level analysis + deleted file recovery
-- [ ] Metadata extraction (ExifTool)
-- [ ] Browser artifact analysis
-- [ ] USB activity analysis
-- [ ] Integrity re-verification job
+- [x] Evidence intake + hashing + chain-of-custody record
+- [x] File-level analysis + deleted file recovery
+- [x] Metadata extraction (ExifTool)
+- [x] Browser artifact analysis
+- [x] USB activity analysis
+- [x] Integrity re-verification job
 
 ### Phase 7 — Incident Response
 - [ ] Response recommender (rules per incident type)

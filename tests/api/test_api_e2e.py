@@ -14,7 +14,23 @@ async def test_api_gateway_e2e():
         # 1. Health check
         res_health = await client.get("/api/health")
         assert res_health.status_code == 200
-        assert res_health.json() == {"status": "ok", "service": "mms-api-gateway"}
+        health_json = res_health.json()
+        assert health_json["status"] == "ok"
+        assert health_json["service"] == "mms-api-gateway"
+
+        # Check if OpenSearch is reachable before querying ingested events
+        from opensearchpy import OpenSearch
+        from src.shared.config import settings
+        opensearch_live = False
+        try:
+            os_client = OpenSearch(hosts=[settings.opensearch_url], timeout=2)
+            opensearch_live = bool(os_client.ping())
+            os_client.close()
+        except Exception:
+            opensearch_live = False
+
+        if not opensearch_live:
+            pytest.skip("OpenSearch container is not running on localhost:9200")
 
         # 2. Query ingested events
         res_events = await client.get("/api/events?size=10")

@@ -5,6 +5,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    allowedHosts: [
+      'powdered-duffel-citrus.ngrok-free.dev',
+      '.ngrok-free.dev',
+      '.ngrok.app',
+      '.ngrok-free.app',
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

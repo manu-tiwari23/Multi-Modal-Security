@@ -2,6 +2,7 @@ import React from 'react'
 
 export default function Navigation({ activeTab, setActiveTab, alertCount, sessionCount }) {
   const tabs = [
+    { id: 'copilot', label: 'AI Security Copilot', icon: '🤖' },
     { id: 'alerts', label: 'SOC Alerts & Incidents', icon: '🚨', badge: alertCount },
     { id: 'honeypot', label: 'Honeypot & Deception', icon: '🍯', badge: sessionCount },
     { id: 'events', label: 'Live Telemetry', icon: '📡' },

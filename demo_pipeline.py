@@ -27,6 +27,8 @@ from src.soc.alerting.manager import AlertManager
 from src.honeypot.server import DeceptionService
 from src.honeypot.normalizer import normalise_command_record, normalise_artifact_record, normalise_session_to_event
 from src.honeypot.behavior import BehaviorAnalyzer, ARCHETYPES
+from src.phishing.email_analyzer import EmailAnalyzer, EmailParser
+from src.phishing.url_scanner import URLScanner
 
 
 # -- ANSI colour codes -----------------------------------------------------
@@ -283,6 +285,66 @@ def main() -> None:
         time.sleep(0.15)
 
     # ====================================================================
+    # STAGE 6: PHISHING DETECTION & URL REPUTATION ANALYSIS
+    # ====================================================================
+    banner("Stage 6: Phishing Detection & Brand Lookalike Analysis", C.MAGENTA)
+
+    url_scanner = URLScanner()
+    email_analyzer = EmailAnalyzer(url_scanner=url_scanner)
+
+    test_urls = [
+        ("https://google.com", "Legitimate corporate destination"),
+        ("http://xn--pypal-4ve.com/login/update-password.exe", "IDN homoglyph punycode brand spoofing + executable payload"),
+    ]
+
+    print(f"  {C.BOLD}1. Scanning target URLs with lexical heuristics & threat intel:{C.RESET}\n")
+    for u, desc in test_urls:
+        v = url_scanner.scan_url(u)
+        sc = sev_c(v.severity.value)
+        status_tag = f"{C.RED}[PHISHING]{C.RESET}" if v.is_phishing else f"{C.GREEN}[SAFE]{C.RESET}"
+        print(f"    {status_tag} {C.BOLD}{u}{C.RESET}")
+        info("Context", desc, indent=6)
+        info("Severity", f"{sc}{v.severity.value.upper()}{C.RESET} (Score: {v.score:.1f}/100)", indent=6)
+        info("Signals", f"{len(v.signals)} detected", indent=6)
+        for s in v.signals[:3]:
+            print(f"      {C.YELLOW}* {s.name}:{C.RESET} {s.description[:80]}...")
+        print()
+
+    print(f"  {C.BOLD}2. Ingesting targeted spearphishing email into SOC correlation:{C.RESET}\n")
+    phishing_email_raw = (
+        f"From: security-notice@paypal.com.account-alert.xyz\r\n"
+        f"To: root@prod-web-01\r\n"
+        f"Subject: URGENT: Account Suspension Notice within 24 hours!\r\n\r\n"
+        f"Dear Administrator,\r\n\r\n"
+        f"Please verify your credentials immediately to avoid permanent lock:\r\n"
+        f"http://xn--pypal-4ve.com/login/update-password.exe\r\n\r\n"
+        f"Security Team"
+    )
+    parsed_phish = EmailParser.parse_raw_string(phishing_email_raw)
+    phish_verdict = email_analyzer.analyze(parsed_phish)
+    ev_phish = email_analyzer.to_security_event(phish_verdict, parsed_phish)
+    ev_phish.entity.ip = "203.0.113.88"
+    ev_phish.entity.host = "prod-web-01"
+
+    print(f"    {C.RED}[PHISHING DETECTED]{C.RESET} Score: {phish_verdict.score:.1f}/100 [{phish_verdict.severity.value.upper()}]")
+    info("Target", f"{ev_phish.entity.user}@{ev_phish.entity.host}", indent=6)
+    info("Signals", f"{len(phish_verdict.signals)} indicators fired", indent=6)
+    info("MITRE", ", ".join(phish_verdict.mitre_techniques), indent=6)
+
+    # Correlate into SOC incident
+    phish_incident = correlator.process_event(ev_phish, rule_matches=[])
+    if phish_incident:
+        score, bd = score_incident(phish_incident)
+        phish_incident.risk_score = score
+        phish_alert = alert_mgr.process_incident(phish_incident)
+        print(f"    {C.CYAN}>> Correlated Multi-Source Incident:{C.RESET} Events: {phish_incident.event_count}  "
+              f"Sources: {', '.join(sorted(set(e.source for e in phish_incident.timeline)))}")
+        if phish_alert:
+            print(f"    {C.RED}>> Updated Alert Priority:{C.RESET} {pri_c(phish_alert.priority)}{phish_alert.priority}{C.RESET} "
+                  f"(Risk Score: {phish_alert.risk_score:.1f}/100)")
+            published.append((phish_alert, False))
+
+    # ====================================================================
     # SUMMARY
     # ====================================================================
     banner("PIPELINE RESULTS", C.GREEN)
@@ -337,7 +399,7 @@ def main() -> None:
             print(f"    FINAL RISK SCORE: {alert.risk_score:.1f}/100{C.RESET}")
 
     # -- Test summary ------------------------------------------------------
-    banner("UNIT TEST COVERAGE (142 tests)", C.BLUE)
+    banner("UNIT TEST COVERAGE (231 tests)", C.BLUE)
 
     suites = [
         ("shared/test_event_schema.py", 11, "Event schema + serialisation"),
@@ -353,6 +415,21 @@ def main() -> None:
         ("honeypot/test_cowrie_parser.py", 5, "Cowrie JSON stream parser"),
         ("honeypot/test_behavior.py",    6, "Attacker behavior & TTP clustering"),
         ("honeypot/test_integration.py", 1, "Cross-modal SOC+Honeypot correlation"),
+        ("copilot/test_retrieval.py",    5, "Copilot OpenSearch & memory retrieval"),
+        ("copilot/test_tools.py",        5, "Copilot tool definitions & executor"),
+        ("copilot/test_composer.py",     4, "Grounded response composer & citations"),
+        ("copilot/test_reports.py",      4, "Incident report generator"),
+        ("copilot/test_orchestrator.py", 5, "Copilot orchestrator & safety guards"),
+        ("copilot/test_api.py",          3, "Copilot REST API endpoints"),
+        ("forensics/test_evidence_vault.py", 12, "Evidence vault & chain of custody"),
+        ("forensics/test_file_analyzer.py", 12, "Entropy, carving & trash recovery"),
+        ("forensics/test_metadata_extractor.py", 10, "OOXML, PDF, EXIF & PE metadata"),
+        ("forensics/test_browser_analyzer.py", 7, "Browser history, downloads & cookies"),
+        ("forensics/test_usb_analyzer.py", 11, "USB device logs, registry & BadUSB"),
+        ("forensics/test_integrity_job.py", 11, "Integrity re-verification job & audit"),
+        ("phishing/test_email_analyzer.py", 41, "Email header, body, auth & link analyzer"),
+        ("phishing/test_url_scanner.py", 50, "URL reputation, lookalikes & threat intel"),
+        ("api/test_phishing_api.py", 6, "Phishing REST API & attack simulation"),
     ]
     total = 0
     for path, count, desc in suites:

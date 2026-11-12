@@ -2,7 +2,7 @@
 
 Living document. Update this as the project evolves — it should always reflect the *current real state*, not the plan. The agent reads this at the start of every session.
 
-_Last updated: 2026-08-22 — update this line every time you edit the file_
+_Last updated: 2026-10-06 — update this line every time you edit the file_
 
 ## Tech Stack (current, as actually implemented)
 
@@ -66,7 +66,7 @@ _Add new variables here the moment they're introduced in code._
 |---|---|---|
 | VirusTotal API | Threat Intelligence module | Not yet integrated |
 | AbuseIPDB API | Threat Intelligence module | Not yet integrated |
-| OpenAI API | AI Copilot | Not yet integrated |
+| OpenAI API | AI Copilot | Integrated (`gpt-4o-mini` with tool calling & local fallback) |
 | MISP (self-hosted) | Threat Intelligence module | Deferred — see DECISIONS.md |
 
 ## Current Implementation Status (snapshot)
@@ -74,10 +74,10 @@ _Add new variables here the moment they're introduced in code._
 | Module | Status |
 |---|---|
 | SOC | Phase 2 complete — normalization, detection, correlation, scoring, alerting all implemented and tested (107 unit tests) |
-| AI Copilot | Not started |
+| AI Copilot | Phase 4 complete — RAG retrieval, OpenAI tool-calling, response composer with citations, report generator, security guardrails, and React chat UI (26 unit/API tests) |
 | Honeypot | Phase 3 complete — deceptive virtual shell, bounded recorder, Cowrie parser, event normalizer, TTP clustering, & cross-modal correlation tested (35 unit tests) |
-| Phishing Detection | Not started |
-| Digital Forensics | Not started |
+| Phishing Detection | In progress — Phase 5 Features 1 & 2 complete: Email header & content analyzer (41 tests), URL reputation scanner (50 tests), and FastAPI REST Gateway endpoints (/scan/url, /scan/email, /stats, attack simulation) tested (91 phishing unit tests, 9 API tests, 328/328 total passing); Attachment analyzer next |
+| Digital Forensics | Phase 6 complete — All 6 features implemented and tested: Evidence vault & chain of custody, file analysis & deleted file recovery, metadata extraction, browser artifact analysis, USB activity forensics, and automated integrity re-verification jobs with pipeline tamper alerting (63 unit tests, 231 total passing) |
 | Threat Intelligence | Not started |
 | Incident Response | Not started |
 | Physical Alert (ESP32) | Not started |

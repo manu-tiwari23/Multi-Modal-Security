@@ -16,6 +16,16 @@ Log of test results, one entry per feature, added *before* checking it off in `T
 | 2026-08-22 | soc | Transparent risk scoring calculator (weighted formula + explainability) | unit | Pass | 27/27 tests passing (83/83 total unit tests) |
 | 2026-08-22 | soc | Alert Manager (dedup, priority, threshold, callback, full pipeline) | unit | Pass | 24/24 tests passing (107/107 total unit tests) |
 | 2026-08-22 | honeypot | Deceptive service, bounded session recorder, Cowrie parser, event normalizer, TTP clustering, & cross-modal correlation | unit | Pass | 35/35 tests passing (142/142 total unit tests) |
+| 2026-08-22 | copilot | RAG retrieval, OpenAI tool-calling, response composer with citations, report generator, guardrails, and API endpoints | unit | Pass | 26/26 tests passing (168/168 total unit tests) |
+| 2026-10-04 | forensics | Evidence intake + immediate SHA-256/MD5 hashing + chain-of-custody logging + tamper detection on access | unit | Pass | 12/12 tests passing (180/180 total unit tests) |
+| 2026-10-04 | forensics | File-level analysis (entropy, magic bytes, extension spoofing, IOC extraction, carving, deleted file recovery) | unit | Pass | 12/12 tests passing (192/192 total unit tests) |
+| 2026-10-04 | forensics | Metadata extraction (OOXML docProps, PDF Info & weaponization, EXIF camera/GPS, PNG chunks, PE compilation/sections, MACB) | unit | Pass | 10/10 tests passing (202/202 total unit tests) |
+| 2026-10-04 | forensics | Browser artifact analysis (Chrome/Firefox history, downloads, cookies, WebKit/Mozilla epoch timestamps, suspicious queries, dangerous downloads) | unit | Pass | 7/7 tests passing (209/209 total unit tests) |
+| 2026-10-04 | forensics | USB activity analysis (Windows setupapi.dev.log, Registry USBSTOR/MountedDevices drive mapping, Linux syslog/dmesg, BadUSB/Flipper Zero detection) | unit | Pass | 11/11 tests passing (220/220 total unit tests) |
+| 2026-10-04 | forensics | Integrity re-verification job (full vault sweeps, case-filtered audits, tamper detection, missing file alerts, background daemon, audit reports) | unit | Pass | 11/11 tests passing (231/231 total unit tests, 63/63 forensics) |
+| 2026-10-05 | phishing | Email header & content analyzer (models, EmailParser, 8 detection modules, synthetic samples, SecurityEvent mapping) | unit | Pass | 41/41 tests passing (272/272 total unit tests) |
+| 2026-10-06 | phishing | URL reputation scanner (URLFeatureExtractor, LookalikeAnalyzer, homographs, IP obfuscation, URLReputationCache, threat intel providers, SecurityEvent mapping) | unit | Pass | 50/50 tests passing (322/322 total unit tests, 91/91 phishing) |
+| 2026-10-06 | api/phishing | Phishing REST API endpoints (/scan/url, /scan/email, /stats), attack simulation, & bug fixes (B003, B004) | unit | Pass | 6/6 tests passing (328/328 total unit tests, 9/9 API tests) |
 
 **Test Type** — one of: `unit`, `integration`, `manual`
 **Result** — one of: `Pass`, `Fail`, `Pass with issues` (if it works but a bug was logged in `BUGS.md`)

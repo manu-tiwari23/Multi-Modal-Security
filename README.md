@@ -34,6 +34,7 @@ An AI-powered, integrated cybersecurity platform combining a Security Operations
 | `DECISIONS.md` | Why we chose what we chose (ADR log) |
 | `BUGS.md` | Known issues tracker |
 | `TEST_REPORT.md` | Test results per feature |
+| `HOW_TO_RUN.md` | Complete guide on running, commands, demo, API, dashboard, and testing |
 
 ## Tech Stack (summary)
 
@@ -50,14 +51,23 @@ Full details in `ARCHITECTURE.md`.
 
 ## Getting Started
 
+See [`HOW_TO_RUN.md`](HOW_TO_RUN.md) for full instructions, commands, and options.
+
+### Quick Start (Standalone Demo — No Docker Needed)
 ```bash
-git clone <repo-url>
-cd mms
-cp .env.example .env       # fill in API keys, ports, credentials
-docker compose up -d       # brings up opensearch, postgres, minio, redis, mosquitto
+python demo_pipeline.py
 ```
 
-Then follow the setup notes in `PROJECT_CONTEXT.md` for running individual services during development.
+### Full Infrastructure (Optional)
+```bash
+cp .env.example .env       # fill in API keys, ports, credentials
+docker compose up -d       # brings up opensearch, postgres, minio, redis, mosquitto
+uvicorn src.api.main:app --reload --port 8000   # starts API gateway
+```
+In another terminal:
+```bash
+cd src/dashboard && npm install && npm run dev  # starts React UI at http://localhost:5173
+```
 
 ## Contributing / Build Process
 
