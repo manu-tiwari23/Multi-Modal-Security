@@ -29,6 +29,11 @@ from opensearchpy import OpenSearch
 
 from src.shared.config import settings
 from src.shared.event_schema import Entity, SecurityEvent
+from src.reporting import build_incident_report
+from src.reporting.threat import build_threat_report
+from src.api.reports import ReportFormat, report_response
+from src.api.forensics import create_forensics_router
+from src.forensics.runtime import get_evidence_vault
 from src.soc.detection.rule_loader import RuleLoader
 from src.soc.detection.matcher import DetectionEngine
 from src.soc.correlation.engine import CorrelationEngine
@@ -45,6 +50,7 @@ from src.honeypot.normalizer import (
     normalise_session_to_event,
 )
 from src.honeypot.behavior import BehaviorAnalyzer
+import base64
 from src.copilot.models import CopilotQuery
 from src.copilot.retrieval import LogRetriever, IncidentRetriever, ThreatIntelRetriever
 from src.copilot.report_generator import IncidentReportGenerator
@@ -52,7 +58,31 @@ from src.copilot.tools import ToolExecutor, OPENAI_TOOLS
 from src.copilot.orchestrator import CopilotOrchestrator
 from src.phishing.email_analyzer import EmailAnalyzer, EmailParser
 from src.phishing.url_scanner import URLScanner
+from src.phishing.attachment_analyzer import AttachmentAnalyzer
+from src.phishing.explanation_generator import ExplanationGenerator
 from src.phishing.models import PhishingVerdict, ParsedEmail
+from src.incident_response import (
+    ActionExecutor,
+    ApprovalError,
+    ApprovalExpiredError,
+    ApprovalManager,
+    ApprovalNotFoundError,
+    ApprovalStatus,
+    IncidentNotTrackedError,
+    IncidentPhase,
+    IncidentStateTracker,
+    InvalidApprovalStateError,
+    InvalidApproverError,
+    InvalidStateTransitionError,
+    MockEDRBackend,
+    MockFirewallBackend,
+    MockWorkflowBackend,
+    NoBackendAvailableError,
+    ResponseAction,
+    ResponsePlan,
+    ResponseRecommender,
+    UnapprovedActionError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,12 +115,32 @@ copilot_orchestrator = CopilotOrchestrator(tool_executor)
 
 # Phishing Detection Subsystem Initialization
 phishing_url_scanner = URLScanner()
-phishing_email_analyzer = EmailAnalyzer(url_scanner=phishing_url_scanner)
+phishing_attachment_analyzer = AttachmentAnalyzer()
+phishing_explanation_generator = ExplanationGenerator()
+phishing_email_analyzer = EmailAnalyzer(
+    url_scanner=phishing_url_scanner,
+    attachment_analyzer=phishing_attachment_analyzer,
+)
 phishing_stats = {
     "total_emails_scanned": 0,
     "total_urls_scanned": 0,
+    "total_attachments_scanned": 0,
     "phishing_detected_count": 0,
 }
+
+# Incident Response Subsystem Initialization
+ir_recommender = ResponseRecommender()
+ir_approval_manager = ApprovalManager()
+ir_firewall_backend = MockFirewallBackend()
+ir_edr_backend = MockEDRBackend()
+ir_workflow_backend = MockWorkflowBackend()
+ir_executor = ActionExecutor(
+    approval_manager=ir_approval_manager,
+    backends=[ir_firewall_backend, ir_edr_backend, ir_workflow_backend],
+)
+ir_state_tracker = IncidentStateTracker()
+ir_plans: dict[str, ResponsePlan] = {}
+ir_actions: dict[str, ResponseAction] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -177,7 +227,11 @@ async def ingest_pipeline_event(event: SecurityEvent) -> dict[str, Any]:
             "active_incidents": correlation_engine.active_incident_count,
             "honeypot_sessions": len(session_recorder.get_active_sessions()) + len(session_recorder.get_closed_sessions()),
             "rules_loaded": len(loaded_rules),
-            "phishing_scans": phishing_stats["total_emails_scanned"] + phishing_stats["total_urls_scanned"],
+            "phishing_scans": (
+                phishing_stats["total_emails_scanned"]
+                + phishing_stats["total_urls_scanned"]
+                + phishing_stats["total_attachments_scanned"]
+            ),
         },
     }
     await manager.broadcast(json.dumps(payload))
@@ -300,6 +354,9 @@ def _get_os() -> Optional[OpenSearch]:
 # ---------------------------------------------------------------------------
 
 
+app.include_router(create_forensics_router(get_evidence_vault, ingest_pipeline_event))
+
+
 @app.get("/api/health")
 async def health():
     """Liveness check and service status."""
@@ -310,7 +367,11 @@ async def health():
         "active_incidents": correlation_engine.active_incident_count,
         "active_alerts": alert_manager.alert_count,
         "honeypot_sessions": len(session_recorder.get_active_sessions()) + len(session_recorder.get_closed_sessions()),
-        "phishing_scans": phishing_stats["total_emails_scanned"] + phishing_stats["total_urls_scanned"],
+        "phishing_scans": (
+            phishing_stats["total_emails_scanned"]
+            + phishing_stats["total_urls_scanned"]
+            + phishing_stats["total_attachments_scanned"]
+        ),
     }
 
 
@@ -323,6 +384,7 @@ async def get_events(
 ):
     """Query recent security events (merging OpenSearch & in-memory buffer)."""
     events_out: list[dict[str, Any]] = []
+    total = 0
     os_client = _get_os()
     if os_client is not None:
         index = settings.opensearch_events_index
@@ -338,10 +400,13 @@ async def get_events(
             "query": {"bool": {"must": must_clauses}} if must_clauses else {"match_all": {}},
             "sort": [{"timestamp": {"order": "desc"}}],
             "size": size,
+            "track_total_hits": True,
         }
         try:
             result = os_client.search(index=index, body=body)
             hits = result.get("hits", {}).get("hits", [])
+            hit_total = result.get("hits", {}).get("total", 0)
+            total = hit_total.get("value", 0) if isinstance(hit_total, dict) else hit_total
             events_out = [hit["_source"] for hit in hits]
         except Exception:
             pass
@@ -356,8 +421,9 @@ async def get_events(
         if event_type:
             filtered = [e for e in filtered if e.event_type == event_type]
         events_out = [e.model_dump(mode="json") for e in filtered[:size]]
+        total = len(filtered)
 
-    return {"total": len(events_out), "count": len(events_out), "events": events_out}
+    return {"total": total, "count": len(events_out), "events": events_out}
 
 
 # ---------------------------------------------------------------------------
@@ -382,7 +448,7 @@ async def get_alerts(priority: Optional[str] = None):
 @app.get("/api/incidents")
 async def get_incidents():
     """Get active correlated security incidents with timelines and linked entities."""
-    incidents = correlation_engine.get_active_incidents()
+    incidents = correlation_engine.active_incidents
     return {
         "total": len(incidents),
         "incidents": [inc.model_dump(mode="json") for inc in incidents],
@@ -572,6 +638,22 @@ async def get_copilot_tools():
     return {"count": len(OPENAI_TOOLS), "tools": OPENAI_TOOLS}
 
 
+@app.get("/api/reports/threats")
+def download_threat_report(format: ReportFormat = "json"):
+    incidents = [i.model_dump(mode="json") for i in correlation_engine.list_incidents()]
+    events = [e.model_dump(mode="json") for e in RECENT_EVENTS_BUFFER]
+    return report_response(build_threat_report(incidents, events, MAX_BUFFER_SIZE), format)
+
+
+@app.get("/api/reports/incidents/{incident_id}")
+def download_incident_report(incident_id: str, format: ReportFormat = "json"):
+    incident = correlation_engine.get_incident(incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    state = ir_state_tracker.get_incident_record(incident_id) if ir_state_tracker.is_tracked(incident_id) else None
+    return report_response(build_incident_report(incident.model_dump(mode="json"), state), format)
+
+
 class ReportRequest(BaseModel):
     incident_id: str
 
@@ -609,6 +691,30 @@ class EmailScanRequest(BaseModel):
     publish_to_pipeline: bool = True
 
 
+class AttachmentScanRequest(BaseModel):
+    filename: str
+    content_base64: Optional[str] = None
+    content_text: Optional[str] = None
+    content_type: str = "application/octet-stream"
+    source_user: Optional[str] = None
+    publish_to_pipeline: bool = True
+
+
+class ExplainVerdictRequest(BaseModel):
+    verdict: PhishingVerdict
+    target: Optional[str] = None
+
+
+class CompositePhishingScanRequest(BaseModel):
+    raw_email: Optional[str] = None
+    subject: Optional[str] = None
+    sender: Optional[str] = None
+    recipient: Optional[str] = None
+    body: Optional[str] = None
+    attachments: list[AttachmentScanRequest] = []
+    publish_to_pipeline: bool = True
+
+
 @app.post("/api/phishing/scan/url")
 async def scan_phishing_url(req: URLScanRequest):
     """Scan a target URL for phishing indicators, lookalikes, and threat reputation."""
@@ -627,6 +733,7 @@ async def scan_phishing_url(req: URLScanRequest):
 
     return {
         "verdict": verdict.to_dict(),
+        "structured_explanation": phishing_explanation_generator.explain(verdict).model_dump(),
         "pipeline": pipeline_res,
     }
 
@@ -659,6 +766,126 @@ async def scan_phishing_email(req: EmailScanRequest):
 
     return {
         "verdict": verdict.to_dict(),
+        "structured_explanation": phishing_explanation_generator.explain(verdict).model_dump(),
+        "pipeline": pipeline_res,
+    }
+
+
+@app.post("/api/phishing/scan/attachment")
+async def scan_phishing_attachment(req: AttachmentScanRequest):
+    """Statically scan an email attachment (no detonation/execution) for phishing & malware risks."""
+    if not req.filename or not req.filename.strip():
+        raise HTTPException(status_code=400, detail="Attachment filename must not be empty.")
+
+    if req.content_base64 is not None:
+        try:
+            raw_bytes = base64.b64decode(req.content_base64, validate=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid base64 payload in content_base64.")
+    elif req.content_text is not None:
+        raw_bytes = req.content_text.encode("utf-8", errors="replace")
+    else:
+        raise HTTPException(status_code=400, detail="Either content_base64 or content_text must be provided.")
+
+    scan_res = phishing_attachment_analyzer.scan_bytes_detailed(
+        data=raw_bytes,
+        filename=req.filename,
+        content_type=req.content_type,
+    )
+    verdict = scan_res.verdict
+    phishing_stats["total_attachments_scanned"] += 1
+    if verdict.is_phishing:
+        phishing_stats["phishing_detected_count"] += 1
+
+    pipeline_res = None
+    if req.publish_to_pipeline:
+        event = phishing_attachment_analyzer.to_security_event(
+            verdict=verdict,
+            features=scan_res.features,
+            source_user=req.source_user,
+        )
+        pipeline_res = await ingest_pipeline_event(event)
+
+    return {
+        "verdict": verdict.to_dict(),
+        "features": scan_res.features.model_dump(),
+        "structured_explanation": phishing_explanation_generator.explain(verdict).model_dump(),
+        "pipeline": pipeline_res,
+    }
+
+
+@app.post("/api/phishing/explain")
+async def explain_phishing_verdict(req: ExplainVerdictRequest):
+    """Generate a structured, auditable explanation for an existing PhishingVerdict."""
+    structured = phishing_explanation_generator.explain(req.verdict, target=req.target)
+    return {"structured_explanation": structured.model_dump()}
+
+
+@app.post("/api/phishing/scan/composite")
+async def scan_phishing_composite(req: CompositePhishingScanRequest):
+    """Run email, URL, and static attachment scanners together and return a unified explanation."""
+    if req.raw_email:
+        parsed = EmailParser.parse_raw_string(req.raw_email)
+    elif req.body or req.subject or req.sender:
+        raw_msg = (
+            f"From: {req.sender or 'unknown@external.net'}\r\n"
+            f"To: {req.recipient or 'user@target.corp'}\r\n"
+            f"Subject: {req.subject or '(No Subject)'}\r\n\r\n"
+            f"{req.body or ''}"
+        )
+        parsed = EmailParser.parse_raw_string(raw_msg)
+    else:
+        raise HTTPException(status_code=400, detail="Either raw_email or body/subject/sender must be provided.")
+
+    email_verdict = phishing_email_analyzer.analyze(parsed)
+    phishing_stats["total_emails_scanned"] += 1
+
+    url_verdicts: list[PhishingVerdict] = []
+    for u in parsed.body.extracted_urls[:10]:
+        uv = phishing_url_scanner.scan_url(u)
+        url_verdicts.append(uv)
+        phishing_stats["total_urls_scanned"] += 1
+
+    attachment_verdicts: list[PhishingVerdict] = []
+    for att in req.attachments:
+        if att.content_base64 is not None:
+            try:
+                raw_bytes = base64.b64decode(att.content_base64, validate=True)
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"Invalid base64 payload for '{att.filename}'.")
+        elif att.content_text is not None:
+            raw_bytes = att.content_text.encode("utf-8", errors="replace")
+        else:
+            raw_bytes = b""
+        av = phishing_attachment_analyzer.scan_bytes(
+            data=raw_bytes,
+            filename=att.filename,
+            content_type=att.content_type,
+            email_id=parsed.email_id,
+        )
+        attachment_verdicts.append(av)
+        phishing_stats["total_attachments_scanned"] += 1
+
+    structured = phishing_explanation_generator.explain_composite(
+        email_verdict=email_verdict,
+        url_verdicts=url_verdicts,
+        attachment_verdicts=attachment_verdicts,
+    )
+    if structured.is_phishing:
+        phishing_stats["phishing_detected_count"] += 1
+
+    pipeline_res = None
+    if req.publish_to_pipeline:
+        event = phishing_email_analyzer.to_security_event(email_verdict, parsed)
+        event.enrichment["composite_score"] = structured.score
+        event.enrichment["composite_headline"] = structured.headline
+        pipeline_res = await ingest_pipeline_event(event)
+
+    return {
+        "email_verdict": email_verdict.to_dict(),
+        "url_verdicts": [v.to_dict() for v in url_verdicts],
+        "attachment_verdicts": [v.to_dict() for v in attachment_verdicts],
+        "structured_explanation": structured.model_dump(),
         "pipeline": pipeline_res,
     }
 
@@ -671,12 +898,193 @@ async def get_phishing_stats():
         if hasattr(phishing_url_scanner, "threat_intel") and phishing_url_scanner.threat_intel
         else "SyntheticBlocklistProvider"
     )
+    hash_provider_name = phishing_attachment_analyzer.hash_provider.__class__.__name__
     return {
         "total_emails_scanned": phishing_stats["total_emails_scanned"],
         "total_urls_scanned": phishing_stats["total_urls_scanned"],
+        "total_attachments_scanned": phishing_stats["total_attachments_scanned"],
         "phishing_detected_count": phishing_stats["phishing_detected_count"],
-        "cache_entries": len(phishing_url_scanner.cache),
-        "threat_intel_providers": [provider_name],
+        "cache_entries": len(phishing_url_scanner.cache) + len(phishing_attachment_analyzer.cache),
+        "threat_intel_providers": [provider_name, hash_provider_name],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Incident Response Endpoints (Phase 7)
+# ---------------------------------------------------------------------------
+
+
+class IRApprovalDecisionRequest(BaseModel):
+    analyst_id: str
+    reason: str = ""
+
+
+class IRStateTransitionRequest(BaseModel):
+    to_phase: IncidentPhase
+    actor: str = "analyst"
+    reason: str = ""
+
+
+@app.post("/api/ir/recommend/{incident_id}")
+async def ir_recommend(incident_id: str, incident_override: Optional[Incident] = None):
+    """Generate a response plan and pending approval requests for an incident."""
+    incident = incident_override or correlation_engine.get_incident(incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found")
+
+    if not ir_state_tracker.is_tracked(incident.incident_id):
+        ir_state_tracker.register_incident(incident.incident_id, actor="system")
+
+    plan = ir_recommender.recommend(incident)
+    ir_plans[plan.plan_id] = plan
+    ir_state_tracker.link_plan(incident.incident_id, plan.plan_id)
+
+    approval_requests = []
+    for action in plan.actions:
+        ir_actions[action.action_id] = action
+        req = ir_approval_manager.request_approval(
+            action=action,
+            incident_id=incident.incident_id,
+            plan_id=plan.plan_id,
+        )
+        approval_requests.append(req.model_dump(mode="json"))
+
+    return {
+        "plan": plan.model_dump(mode="json"),
+        "approval_requests": approval_requests,
+    }
+
+
+@app.get("/api/ir/approvals")
+async def ir_list_approvals(
+    incident_id: Optional[str] = Query(default=None),
+    status: Optional[ApprovalStatus] = Query(default=None),
+):
+    """List approval requests, optionally filtered by incident_id or status."""
+    ir_approval_manager.expire_stale()
+    reqs = ir_approval_manager.list_requests(incident_id=incident_id, status=status)
+    return {"approvals": [r.model_dump(mode="json") for r in reqs], "count": len(reqs)}
+
+
+@app.post("/api/ir/approvals/{request_id}/approve")
+async def ir_approve_request(request_id: str, body: IRApprovalDecisionRequest):
+    """Approve a pending containment/response action request."""
+    req = ir_approval_manager.get_request(request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail=f"Approval request '{request_id}' not found")
+    action = ir_actions.get(req.action_id)
+    try:
+        decision = ir_approval_manager.approve(
+            request_id=request_id,
+            analyst_id=body.analyst_id,
+            reason=body.reason,
+            action=action,
+        )
+    except InvalidApproverError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ApprovalExpiredError as exc:
+        raise HTTPException(status_code=410, detail=str(exc))
+    except InvalidApprovalStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ApprovalNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    updated_req = ir_approval_manager.get_request(request_id)
+    return {
+        "decision": decision.model_dump(mode="json"),
+        "request": updated_req.model_dump(mode="json") if updated_req else None,
+    }
+
+
+@app.post("/api/ir/approvals/{request_id}/reject")
+async def ir_reject_request(request_id: str, body: IRApprovalDecisionRequest):
+    """Reject a pending containment/response action request."""
+    req = ir_approval_manager.get_request(request_id)
+    if req is None:
+        raise HTTPException(status_code=404, detail=f"Approval request '{request_id}' not found")
+    action = ir_actions.get(req.action_id)
+    try:
+        decision = ir_approval_manager.reject(
+            request_id=request_id,
+            analyst_id=body.analyst_id,
+            reason=body.reason,
+            action=action,
+        )
+    except InvalidApproverError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except ApprovalExpiredError as exc:
+        raise HTTPException(status_code=410, detail=str(exc))
+    except InvalidApprovalStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ApprovalNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    updated_req = ir_approval_manager.get_request(request_id)
+    return {
+        "decision": decision.model_dump(mode="json"),
+        "request": updated_req.model_dump(mode="json") if updated_req else None,
+    }
+
+
+@app.post("/api/ir/execute/{action_id}")
+async def ir_execute_action(action_id: str):
+    """Execute an analyst-approved response action."""
+    action = ir_actions.get(action_id)
+    if action is None:
+        raise HTTPException(status_code=404, detail=f"Action '{action_id}' not found")
+
+    try:
+        result = ir_executor.execute(action)
+    except UnapprovedActionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except NoBackendAvailableError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+
+    req = ir_approval_manager.get_request_for_action(action_id)
+    if req is not None and result.success:
+        ir_state_tracker.record_executed_action(req.incident_id, action_id)
+
+    return {"result": result.model_dump(mode="json"), "action_status": action.execution_status.value}
+
+
+@app.get("/api/ir/incidents/{incident_id}/state")
+async def ir_get_incident_state(incident_id: str):
+    """Get lifecycle phase, linked plans, executed actions, and transition history."""
+    try:
+        return ir_state_tracker.get_incident_record(incident_id)
+    except IncidentNotTrackedError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post("/api/ir/incidents/{incident_id}/transition")
+async def ir_transition_incident_state(incident_id: str, body: IRStateTransitionRequest):
+    """Transition an incident to a new IncidentPhase."""
+    try:
+        transition = ir_state_tracker.transition(
+            incident_id=incident_id,
+            to_phase=body.to_phase,
+            actor=body.actor,
+            reason=body.reason,
+        )
+    except IncidentNotTrackedError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except InvalidStateTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    return {"transition": transition.model_dump(mode="json"), "phase": body.to_phase.value}
+
+
+@app.get("/api/ir/stats")
+async def ir_stats():
+    """Return Incident Response subsystem metrics."""
+    pending = ir_approval_manager.list_pending()
+    return {
+        "incident_phases": ir_state_tracker.get_summary(),
+        "pending_approvals": len(pending),
+        "total_plans": len(ir_plans),
+        "blocked_ips": sorted(ir_firewall_backend.blocked_ips),
+        "isolated_hosts": sorted(ir_edr_backend.isolated_hosts),
+        "disabled_accounts": sorted(ir_edr_backend.disabled_accounts),
     }
 
 

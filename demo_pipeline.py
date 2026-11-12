@@ -29,6 +29,8 @@ from src.honeypot.normalizer import normalise_command_record, normalise_artifact
 from src.honeypot.behavior import BehaviorAnalyzer, ARCHETYPES
 from src.phishing.email_analyzer import EmailAnalyzer, EmailParser
 from src.phishing.url_scanner import URLScanner
+from src.phishing.attachment_analyzer import AttachmentAnalyzer
+from src.phishing.explanation_generator import ExplanationGenerator
 
 
 # -- ANSI colour codes -----------------------------------------------------
@@ -290,7 +292,12 @@ def main() -> None:
     banner("Stage 6: Phishing Detection & Brand Lookalike Analysis", C.MAGENTA)
 
     url_scanner = URLScanner()
-    email_analyzer = EmailAnalyzer(url_scanner=url_scanner)
+    attachment_analyzer = AttachmentAnalyzer()
+    explanation_generator = ExplanationGenerator()
+    email_analyzer = EmailAnalyzer(
+        url_scanner=url_scanner,
+        attachment_analyzer=attachment_analyzer,
+    )
 
     test_urls = [
         ("https://google.com", "Legitimate corporate destination"),
@@ -330,6 +337,21 @@ def main() -> None:
     info("Target", f"{ev_phish.entity.user}@{ev_phish.entity.host}", indent=6)
     info("Signals", f"{len(phish_verdict.signals)} indicators fired", indent=6)
     info("MITRE", ", ".join(phish_verdict.mitre_techniques), indent=6)
+
+    print(f"\n  {C.BOLD}3. Static attachment inspection & unified Explanation Generator:{C.RESET}\n")
+    att_verdict = attachment_analyzer.scan_bytes(
+        b"MZ\x90\x00SYNTHETIC_PE_HEADER",
+        "invoice_statement.pdf",
+        "application/pdf",
+        email_id=parsed_phish.email_id,
+    )
+    composite_exp = explanation_generator.explain_composite(
+        email_verdict=phish_verdict,
+        url_verdicts=[url_scanner.scan_url("http://xn--pypal-4ve.com/login/update-password.exe")],
+        attachment_verdicts=[att_verdict],
+    )
+    info("Attachment", f"{att_verdict.target_filename} -> {att_verdict.score:.1f}/100 ({att_verdict.severity.value.upper()})", indent=6)
+    info("Why Flagged", composite_exp.headline, indent=6)
 
     # Correlate into SOC incident
     phish_incident = correlator.process_event(ev_phish, rule_matches=[])
@@ -399,7 +421,7 @@ def main() -> None:
             print(f"    FINAL RISK SCORE: {alert.risk_score:.1f}/100{C.RESET}")
 
     # -- Test summary ------------------------------------------------------
-    banner("UNIT TEST COVERAGE (231 tests)", C.BLUE)
+    banner("UNIT TEST COVERAGE (371 tests)", C.BLUE)
 
     suites = [
         ("shared/test_event_schema.py", 11, "Event schema + serialisation"),
@@ -429,7 +451,9 @@ def main() -> None:
         ("forensics/test_integrity_job.py", 11, "Integrity re-verification job & audit"),
         ("phishing/test_email_analyzer.py", 41, "Email header, body, auth & link analyzer"),
         ("phishing/test_url_scanner.py", 50, "URL reputation, lookalikes & threat intel"),
-        ("api/test_phishing_api.py", 6, "Phishing REST API & attack simulation"),
+        ("phishing/test_attachment_analyzer.py", 31, "Static attachment inspection & hash intel"),
+        ("phishing/test_explanation_generator.py", 8, "Phishing explainability & labeled eval"),
+        ("api/test_phishing_api.py", 10, "Phishing REST API & attack simulation"),
     ]
     total = 0
     for path, count, desc in suites:

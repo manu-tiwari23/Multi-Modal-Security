@@ -13,8 +13,6 @@ from typing import Any, Optional
 
 from src.copilot.models import ContainmentRecommendation, IncidentReport
 from src.copilot.retrieval import IncidentRetriever, ThreatIntelRetriever
-from src.soc.correlation.engine import CorrelationEngine
-from src.soc.correlation.incident_model import Incident
 
 logger = logging.getLogger(__name__)
 
@@ -71,23 +69,25 @@ class IncidentReportGenerator:
         else:
             priority = "P4-low"
 
-        # 1. Executive Summary
+        # Narrate only the observations in this retrieved incident.
+        timeline = ctx.get("timeline", [])
+        observed_types = sorted({entry.get("event_type", "unknown") for entry in timeline})
+        sources = sorted({entry.get("source", "unknown") for entry in timeline})
         exec_summary = (
-            f"On {datetime.now(timezone.utc).strftime('%B %d, %Y')}, the Multi Modal Security (MMS) platform "
-            f"correlated a multi-stage security incident ({incident_id}) originating from IP address **{attacker_ip}**. "
-            f"The incident reached an elevated risk score of **{risk_score:.1f}/100.0** ({priority.upper()}) "
-            f"across **{event_count}** aggregated security events. Threat activity encompassed authentication "
-            f"tampering, host privilege escalation on **{target_host}**, and interactive deception sensor engagements."
+            f"Incident {incident_id} has recorded severity {severity} and risk score "
+            f"{risk_score:.1f}/100 ({priority}) across {event_count} recorded events. "
+            f"Observed event types: {', '.join(observed_types) or 'none recorded'}. "
+            f"Telemetry sources: {', '.join(sources) or 'none recorded'}. [INCIDENT:{incident_id}]"
         )
 
         # 2. Technical Analysis
         rules_triggered = [rm.get("rule_title", rm.get("rule_id")) for rm in ctx.get("rule_matches", [])]
-        rules_str = ", ".join(rules_triggered) if rules_triggered else "Heuristic Behavioral Correlation"
+        rules_str = ", ".join(rules_triggered) if rules_triggered else "No rule matches recorded"
+        references = " ".join(f"[EVENT:{entry['event_id']}]" for entry in timeline if entry.get("event_id"))
         tech_analysis = (
-            f"The attack campaign began with adversarial reconnaissance and credential brute-forcing targeting "
-            f"user account '{target_user}'. Following initial access attempts, detection rule triggers ({rules_str}) "
-            f"identified privilege escalation attempts targeting root-level access on '{target_host}'. Cross-modal "
-            f"telemetry from deceptive sensors confirmed active malicious intent with command execution patterns."
+            f"Recorded detections: {rules_str}. Associated entities: IP {attacker_ip}, "
+            f"user {target_user}, host {target_host}. Entity association and detection matches "
+            f"require analyst validation; they do not by themselves prove compromise or intent. {references}"
         )
 
         # 3. Chronological Attack Timeline
@@ -97,23 +97,23 @@ class IncidentReportGenerator:
         iocs: list[dict[str, Any]] = []
         if attacker_ip and attacker_ip != "Unknown":
             iocs.append({
-                "type": "IPv4 Address",
+                "type": "IP Address",
                 "value": attacker_ip,
-                "context": "Primary Attacker Source / Scanner Node",
+                "context": f"Observed primary entity [INCIDENT:{incident_id}]",
             })
 
         for e in ctx.get("linked_entities", []):
             if e.get("hash"):
                 iocs.append({
-                    "type": "SHA-256 Hash",
+                    "type": "File Hash",
                     "value": e.get("hash"),
-                    "context": "Malware Dropper / Payload Captured",
+                    "context": f"Observed linked entity [INCIDENT:{incident_id}]",
                 })
             if e.get("user") and e.get("user") not in (attacker_ip, target_user):
                 iocs.append({
                     "type": "Username",
                     "value": e.get("user"),
-                    "context": "Compromised Account Target",
+                    "context": f"Observed linked entity [INCIDENT:{incident_id}]",
                 })
 
         # 5. MITRE ATT&CK Mapping
@@ -121,8 +121,8 @@ class IncidentReportGenerator:
         for tech in ctx.get("mitre_techniques", []):
             mitre_matrix.append({
                 "id": tech,
-                "name": MITRE_DESCRIPTIONS.get(tech, "Observed Adversary Technique"),
-                "source": "SOC Correlation & Honeypot Sensors",
+                "name": MITRE_DESCRIPTIONS.get(tech, "Recorded technique mapping"),
+                "source": f"Incident detection annotation [INCIDENT:{incident_id}]",
             })
 
         # 6. Containment Recommendations (Always require human analyst sign-off)
@@ -132,7 +132,7 @@ class IncidentReportGenerator:
                 ContainmentRecommendation(
                     action_type="block_ip",
                     target=attacker_ip,
-                    rationale=f"Block inbound traffic from adversary IP {attacker_ip} at perimeter firewall / WAF.",
+                    rationale=f"If investigation confirms malicious activity from {attacker_ip}, consider a scoped block after analyst review.",
                     requires_approval=True,
                     priority="critical" if risk_score >= 50 else "high",
                 )
@@ -171,6 +171,6 @@ class IncidentReportGenerator:
             iocs=iocs,
             mitre_matrix=mitre_matrix,
             containment_actions=containment,
-            analyst_notes="Report automatically synthesized by MMS AI Security Copilot with full evidence grounding.",
+            analyst_notes="Deterministic summary of retrieved incident evidence. Recommendations require analyst validation and approval.",
             created_at=datetime.now(timezone.utc),
         )

@@ -60,3 +60,17 @@ def test_generate_report_nonexistent_incident():
 
     report = gen.generate_report("INC-DOES-NOT-EXIST")
     assert report is None
+
+
+def test_single_phishing_event_does_not_invent_attack_stages():
+    class Retriever:
+        def get_incident_context(self, incident_id):
+            return {"title": "Email", "severity": "low", "risk_score": 10, "event_count": 1,
+                    "timeline": [{"event_id": "email-only", "event_type": "phishing_email_detected", "source": "phishing"}]}
+
+    report = IncidentReportGenerator(Retriever()).generate_report("inc-email")
+    narrative = report.executive_summary + report.technical_analysis
+    assert "phishing_email_detected" in narrative
+    assert "[EVENT:email-only]" in narrative
+    for invention in ("brute-forcing", "privilege escalation", "deceptive sensors", "multi-stage"):
+        assert invention not in narrative

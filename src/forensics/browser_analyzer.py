@@ -17,6 +17,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+import time
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,7 @@ from src.forensics.models import (
     BrowserSearchEntry,
     BrowserType,
 )
+from src.shared.config import settings
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +119,7 @@ def safe_sqlite_query(db_path: Path, query: str, params: Tuple = ()) -> List[Tup
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
         tmp_name = tmp.name
 
+    conn = None
     try:
         shutil.copy2(db_path, tmp_name)
         # Also copy WAL and SHM if present
@@ -127,15 +130,27 @@ def safe_sqlite_query(db_path: Path, query: str, params: Tuple = ()) -> List[Tup
         if shm.is_file():
             shutil.copy2(shm, tmp_name + "-shm")
 
-        conn = sqlite3.connect(tmp_name)
+        conn = sqlite3.connect(Path(tmp_name).as_uri() + "?mode=ro", uri=True)
+        conn.execute("PRAGMA trusted_schema=OFF")
+        conn.execute("PRAGMA query_only=ON")
+        conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 1024 * 1024)
+        deadline = time.monotonic() + settings.forensics_query_timeout_seconds
+        conn.set_progress_handler(lambda: int(time.monotonic() >= deadline), 1000)
         cursor = conn.cursor()
         cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+        rows = cursor.fetchmany(settings.forensics_max_artifact_rows + 1)
+        if len(rows) > settings.forensics_max_artifact_rows:
+            raise ValueError("Browser artifact exceeds configured row limit; narrow the collected artifact")
         return rows
-    except Exception:
-        return []
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc):
+            return []  # Optional browser tables are absent in some artifact types.
+        raise ValueError("Browser query exceeded limits or uses an unsupported schema") from exc
+    except sqlite3.DatabaseError as exc:
+        raise ValueError("Browser database is malformed") from exc
     finally:
+        if conn is not None:
+            conn.close()
         for f in [tmp_name, tmp_name + "-wal", tmp_name + "-shm"]:
             try:
                 if os.path.exists(f):
@@ -167,7 +182,7 @@ class ChromeArtifactParser:
             "SELECT url, title, visit_count, typed_count, last_visit_time FROM urls WHERE url IS NOT NULL",
         )
         for url, title, v_count, t_count, last_time in url_rows:
-            dt = webkit_to_datetime(last_time) or datetime.now(timezone.utc)
+            dt = webkit_to_datetime(last_time)
             history_entries.append(
                 BrowserHistoryEntry(
                     url=url,
@@ -198,7 +213,7 @@ class ChromeArtifactParser:
             "SELECT target_path, tab_url, start_time, end_time, total_bytes, state, danger_type FROM downloads",
         )
         for target, tab_url, start_t, end_t, total_b, state_code, danger_type in download_rows:
-            s_dt = webkit_to_datetime(start_t) or datetime.now(timezone.utc)
+            s_dt = webkit_to_datetime(start_t)
             e_dt = webkit_to_datetime(end_t)
 
             state_map = {0: "in_progress", 1: "complete", 2: "cancelled", 3: "interrupted"}
@@ -231,7 +246,7 @@ class ChromeArtifactParser:
             "SELECT host_key, name, path, creation_utc, expires_utc, is_secure, is_httponly FROM cookies",
         )
         for host, name, path, creation_utc, expires_utc, is_sec, is_http in rows:
-            c_dt = webkit_to_datetime(creation_utc) or datetime.now(timezone.utc)
+            c_dt = webkit_to_datetime(creation_utc)
             e_dt = webkit_to_datetime(expires_utc)
             cookies.append(
                 BrowserCookieEntry(
@@ -305,7 +320,7 @@ class FirefoxArtifactParser:
             "SELECT url, title, visit_count, typed, last_visit_date FROM moz_places WHERE url IS NOT NULL",
         )
         for url, title, v_count, typed, last_date in url_rows:
-            dt = mozilla_to_datetime(last_date) or datetime.now(timezone.utc)
+            dt = mozilla_to_datetime(last_date)
             history_entries.append(
                 BrowserHistoryEntry(
                     url=url,
@@ -333,7 +348,7 @@ class FirefoxArtifactParser:
             """,
         )
         for url, content, date_added in anno_rows:
-            dt = mozilla_to_datetime(date_added) or datetime.now(timezone.utc)
+            dt = mozilla_to_datetime(date_added)
             # destinationFileURI is typically file:///...
             dest_path = urllib.parse.unquote(content).replace("file:///", "").replace("file://", "")
             download = BrowserDownloadEntry(
@@ -355,8 +370,8 @@ class FirefoxArtifactParser:
             "SELECT host, name, path, creationTime, expiry, isSecure, isHttpOnly FROM moz_cookies",
         )
         for host, name, path, creation_time, expiry, is_sec, is_http in rows:
-            c_dt = mozilla_to_datetime(creation_time) or datetime.now(timezone.utc)
-            e_dt = datetime.fromtimestamp(expiry, tz=timezone.utc) if expiry and expiry > 0 else None
+            c_dt = mozilla_to_datetime(creation_time)
+            e_dt = mozilla_to_datetime(expiry * 1_000_000) if expiry else None
             cookies.append(
                 BrowserCookieEntry(
                     host=host,
@@ -482,6 +497,8 @@ class BrowserAnalyzer:
         timeline: List[Dict[str, Any]] = []
 
         for h in history:
+            if h.visit_time is None:
+                continue
             timeline.append({
                 "timestamp": h.visit_time.isoformat(),
                 "type": "navigation",
@@ -491,6 +508,8 @@ class BrowserAnalyzer:
             })
 
         for d in downloads:
+            if d.start_time is None:
+                continue
             timeline.append({
                 "timestamp": d.start_time.isoformat(),
                 "type": "download",

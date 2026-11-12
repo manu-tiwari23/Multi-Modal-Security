@@ -22,6 +22,9 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from minio.error import S3Error
+
+from src.forensics.repository import EvidenceStoreUnavailable, MemoryMetadataRepository
 
 from src.forensics.models import (
     ChainOfCustodyEntry,
@@ -133,33 +136,47 @@ class MinIOStorageBackend(StorageBackend):
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
-        except Exception:
-            pass
+        except S3Error as exc:
+            if exc.code not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+                raise EvidenceStoreUnavailable("Evidence object storage is unavailable") from exc
+        except Exception as exc:
+            raise EvidenceStoreUnavailable("Evidence object storage is unavailable") from exc
 
     def store(self, key: str, data: bytes) -> str:
         data_stream = io.BytesIO(data)
-        self.client.put_object(
-            bucket_name=self.bucket_name,
-            object_name=key,
-            data=data_stream,
-            length=len(data),
-        )
+        try:
+            self.client.put_object(bucket_name=self.bucket_name, object_name=key,
+                                   data=data_stream, length=len(data))
+        except Exception as exc:
+            raise EvidenceStoreUnavailable("Evidence object storage is unavailable") from exc
         return f"minio://{self.bucket_name}/{key}"
 
     def retrieve(self, key: str) -> bytes:
-        response = self.client.get_object(self.bucket_name, key)
+        response = None
         try:
+            response = self.client.get_object(self.bucket_name, key)
             return response.read()
+        except S3Error as exc:
+            if exc.code in ("NoSuchKey", "NoSuchObject"):
+                raise FileNotFoundError("Evidence object is missing") from exc
+            raise EvidenceStoreUnavailable("Evidence object storage is unavailable") from exc
+        except Exception as exc:
+            raise EvidenceStoreUnavailable("Evidence object storage is unavailable") from exc
         finally:
-            response.close()
-            response.release_conn()
+            if response is not None:
+                response.close()
+                response.release_conn()
 
     def exists(self, key: str) -> bool:
         try:
             self.client.stat_object(self.bucket_name, key)
             return True
-        except Exception:
-            return False
+        except S3Error as exc:
+            if exc.code in ("NoSuchKey", "NoSuchObject"):
+                return False
+            raise EvidenceStoreUnavailable("Evidence object storage is unavailable") from exc
+        except Exception as exc:
+            raise EvidenceStoreUnavailable("Evidence object storage is unavailable") from exc
 
     def delete(self, key: str) -> bool:
         try:
@@ -262,10 +279,11 @@ class EvidenceVault:
         self,
         storage: Optional[StorageBackend] = None,
         event_publisher: Optional[Callable[[SecurityEvent], None]] = None,
+        metadata_repository=None,
     ) -> None:
         self.storage: StorageBackend = storage or MemoryStorageBackend()
         self.event_publisher = event_publisher
-        self._metadata_registry: Dict[str, EvidenceMetadata] = {}
+        self.repository = metadata_repository or MemoryMetadataRepository()
 
     def ingest_bytes(
         self,
@@ -318,7 +336,10 @@ class EvidenceVault:
             custody_history=[intake_entry],
         )
 
-        self._metadata_registry[evidence_id] = metadata
+        # Commit metadata/custody only after the object write succeeds. If the DB
+        # commit result is uncertain, retain the object rather than risk deleting
+        # bytes referenced by a committed record. Never acknowledge failed intake.
+        self.repository.create(metadata)
 
         # Publish evidence intake event to MMS pipeline
         self._publish_intake_event(metadata)
@@ -357,15 +378,17 @@ class EvidenceVault:
 
     def get_metadata(self, evidence_id: str) -> EvidenceMetadata:
         """Retrieve evidence metadata record."""
-        if evidence_id not in self._metadata_registry:
-            raise KeyError(f"Evidence ID '{evidence_id}' not found in registry.")
-        return self._metadata_registry[evidence_id]
+        return self.repository.get(evidence_id)
 
     def list_evidence(self, case_id: Optional[str] = None) -> List[EvidenceMetadata]:
         """List all evidence in vault, optionally filtered by case_id."""
-        if case_id:
-            return [m for m in self._metadata_registry.values() if m.case_id == case_id]
-        return list(self._metadata_registry.values())
+        return self.repository.list(case_id)
+
+    def record_custody(self, metadata, entry, tampered=False):
+        """Persist an audit entry before returning evidence or reporting success."""
+        updated = self.repository.append(metadata.evidence_id, entry, tampered)
+        metadata.custody_history = updated.custody_history
+        metadata.is_tampered = updated.is_tampered
 
     def get_evidence_bytes(
         self,
@@ -380,9 +403,18 @@ class EvidenceVault:
         If hash mismatch occurs: logs mismatch, flags metadata as tampered,
         and halts execution by raising EvidenceTamperedError.
         """
+        if not verify_hash:
+            raise ValueError("Evidence hash verification is mandatory and cannot be disabled")
         metadata = self.get_metadata(evidence_id)
         storage_key = f"{evidence_id}_{Path(metadata.filename).name}"
-        data = self.storage.retrieve(storage_key)
+        try:
+            data = self.storage.retrieve(storage_key)
+        except (FileNotFoundError, KeyError) as exc:
+            self.record_custody(metadata, ChainOfCustodyEntry(
+                evidence_id=evidence_id, actor=actor, action=CustodyAction.ACCESS,
+                expected_hash=metadata.sha256, actual_hash="MISSING", status=CustodyStatus.MISMATCH,
+                notes=f"Evidence object missing during {purpose}; access halted."), tampered=True)
+            raise FileNotFoundError("Evidence object is missing") from exc
 
         if verify_hash:
             actual_sha256, _, _ = calculate_hashes(data)
@@ -397,8 +429,7 @@ class EvidenceVault:
                     status=CustodyStatus.MISMATCH,
                     notes=f"CRITICAL: Hash mismatch during access for '{purpose}'! Evidence integrity compromised.",
                 )
-                metadata.custody_history.append(mismatch_entry)
-                metadata.is_tampered = True
+                self.record_custody(metadata, mismatch_entry, tampered=True)
                 raise EvidenceTamperedError(evidence_id, metadata.sha256, actual_sha256)
 
             # Verification passed
@@ -411,8 +442,11 @@ class EvidenceVault:
                 status=CustodyStatus.VERIFIED,
                 notes=f"Access verified for purpose: '{purpose}'.",
             )
-            metadata.custody_history.append(access_entry)
+            self.record_custody(metadata, access_entry)
 
+        if metadata.is_tampered:
+            raise EvidenceTamperedError(evidence_id, metadata.sha256, actual_sha256,
+                                        "Evidence has a recorded integrity failure; reacquire it as new evidence before analysis")
         return bytes(data)  # Return an isolated copy
 
     def export_evidence_copy(
@@ -438,7 +472,7 @@ class EvidenceVault:
             status=CustodyStatus.VERIFIED,
             notes=f"Exported copy to destination: {dest} for purpose '{purpose}'.",
         )
-        metadata.custody_history.append(export_entry)
+        self.record_custody(metadata, export_entry)
         return dest
 
     def verify_integrity(self, evidence_id: str, actor: str = "integrity_monitor") -> bool:
@@ -458,8 +492,7 @@ class EvidenceVault:
                 status=CustodyStatus.VERIFIED,
                 notes="Integrity verified successfully.",
             )
-            metadata.custody_history.append(entry)
-            metadata.is_tampered = False
+            self.record_custody(metadata, entry)
             return True
         else:
             entry = ChainOfCustodyEntry(
@@ -471,17 +504,17 @@ class EvidenceVault:
                 status=CustodyStatus.MISMATCH,
                 notes="CRITICAL: Hash mismatch detected during scheduled integrity verification.",
             )
-            metadata.custody_history.append(entry)
-            metadata.is_tampered = True
+            self.record_custody(metadata, entry, tampered=True)
             return False
 
     def verify_all_evidence(self, actor: str = "scheduled_verifier") -> Dict[str, Any]:
         """Verify integrity of all evidence in the vault."""
-        total = len(self._metadata_registry)
+        items = self.list_evidence()
+        total = len(items)
         verified = 0
         tampered: List[str] = []
 
-        for evidence_id in list(self._metadata_registry.keys()):
+        for evidence_id in [item.evidence_id for item in items]:
             if self.verify_integrity(evidence_id, actor=actor):
                 verified += 1
             else:

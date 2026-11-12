@@ -275,6 +275,115 @@ Format: one entry per decision, newest at the bottom.
 
 ---
 
+## D023 — Static-Only Attachment Analyzer with In-Memory Container Inspection and Module Isolation
+
+**Date:** 2026-11-12
+**Decision:** The Attachment Analyzer (`src/phishing/attachment_analyzer.py`) enforces strict static/metadata-only inspection:
+1. **No Detonation & No Disk Writes**: All binary header checks, OOXML relationship XML parsing, PDF active-tag scanning, HTML/SVG smuggling checks, and ZIP directory inspections happen strictly in memory (`io.BytesIO`) with member count (`250`) and XML read (`512 KB`) caps plus compression-ratio zip-bomb heuristics.
+2. **Module Isolation**: Implements self-contained magic-byte, Shannon entropy, and container checks inside `src/phishing/` without importing internals from `src/forensics/` (preserving `AGENTS.md` module isolation).
+3. **Filename Masquerading & Console Safety**: Detects double extensions and Unicode bidirectional RTLO overrides (`U+202E`), escaping non-ASCII characters via `safe_ascii()` in all descriptions/evidence.
+4. **Cached Hash Intelligence**: Uses a thread-safe TTL `HashReputationCache` and pluggable `AttachmentHashProvider` (`SyntheticHashBlocklistProvider`, `VirusTotalHashProvider`) with 1.5s bounded timeout and graceful degradation.
+**Why:** Satisfies `.agents/skills/phishing-detection/SKILL.md` safety rules (never execute untrusted attachments in the main application environment) and `AGENTS.md` isolation and synthetic-test-only guardrails.
+**Status:** Final
+
+---
+
+## D024 — Layered Structured Explanation Generator and Cross-Vector Phishing Fusion
+
+**Date:** 2026-11-12
+**Decision:** Implemented `ExplanationGenerator` (`src/phishing/explanation_generator.py`) as a dedicated, stateless explainability layer over `PhishingVerdict`:
+1. **Per-Signal & Per-Category Attribution**: Computes exact `score_contribution` and `share_percent` per signal and aggregated `CategoryContribution` rows, explicitly flagging when raw summed weights exceed the 100.0 maximum (`score_capped` / `raw_score`).
+2. **Cross-Vector Composite Synthesis**: `explain_composite()` merges signals across email, URL, and attachment verdicts (deduplicating identical `(name, evidence)` pairs), applies a +10.0 corroboration bonus when multiple vectors flag phishing, and narrates the combined attack chain.
+3. **Human-in-the-Loop Action Guidance & ASCII Safety**: Maps triggered categories and MITRE ATT&CK IDs to analyst-approved remediation recommendations (no autonomous containment) and formats all text/Markdown outputs using ASCII-safe punctuation and `safe_ascii()` escaping so Windows consoles never fail with `UnicodeEncodeError`.
+4. **API Enrichment**: Exposed `/api/phishing/explain` and `/api/phishing/scan/composite`, and attached `structured_explanation` to existing `/scan/url`, `/scan/email`, and `/scan/attachment` responses while keeping `verdict.explanation` backward-compatible.
+**Why:** Satisfies `ARCHITECTURE.md` §2/§4.4 explainability principles and `.agents/skills/phishing-detection/SKILL.md` requirement to always accompany scores with specific fired signals and measurable labeled evaluation.
+**Status:** Final
+
+---
+
+## D025 — Incident Response Python Package Naming and Declarative Playbook Recommender
+
+**Date:** 2026-11-12
+**Decision:**
+1. **Python Package Naming (`src/incident_response/`)**: Used underscore (`src/incident_response/` and `tests/incident_response/`) rather than hyphen (`incident-response/`), so the module is a valid, directly importable Python package (`src.incident_response`).
+2. **Mandatory Approval Invariant**: `ResponseAction.requires_approval` defaults to `True` and enforces a Pydantic `@field_validator` that raises `ValueError` if set to `False`, making autonomous containment structurally impossible at the data-model boundary (`AGENTS.md` guardrail).
+3. **Declarative Playbook Recommender**: `ResponseRecommender` evaluates incidents/alerts against declarative `ResponsePlaybook` rules matching event types, MITRE ATT&CK techniques/tactics, source modalities, tags, and minimum severity gates. Actions are auto-populated from `primary_entity`, deduplicated by `(action_type, target_entity)` keeping the highest priority, and sorted `IMMEDIATE` -> `LOW`.
+**Why:** Enforces `ARCHITECTURE.md` §4.8 / §8 human-in-the-loop containment guarantees while keeping response recommendations extensible without modifying core engine code.
+**Status:** Final
+
+---
+
+## D026 — Human-Only Analyst Approval Gate with TTL Expiration
+
+**Date:** 2026-11-12
+**Decision:** Implemented `ApprovalManager` (`src/incident_response/approval.py`) as a thread-safe approval gate with:
+1. **Strict Human Identity Check**: Rejects empty strings and automated identities (`system`, `copilot`, `ai`, `ai_copilot`, `autonomous`, `auto`, `bot`) so AI Copilot or automated rules cannot self-approve containment.
+2. **State & TTL Guards**: Pending requests carry a configurable `expires_at` (`IR_APPROVAL_TTL_SECONDS`, default 3600s); expired or already-decided requests cannot be approved/rejected.
+3. **Append-Only Audit Log**: Every request, approval, rejection, and expiry is recorded with actor, reason, and UTC timestamp.
+**Why:** Enforces `ARCHITECTURE.md` §8 and `AGENTS.md` human-in-the-loop containment requirement with full auditability.
+**Status:** Final
+
+---
+
+## D027 — Pluggable ActionExecutor with Hard Approval Gate and Rollback Support
+
+**Date:** 2026-11-12
+**Decision:** Implemented `ActionExecutor` (`src/incident_response/executor.py`) with pluggable `ActionBackend` implementations (`MockFirewallBackend`, `MockEDRBackend`, `MockWorkflowBackend`):
+1. **Unbypassable Approval Check**: `execute()` verifies `ApprovalManager.is_approved(action_id)` before looking up or invoking any backend, raising `UnapprovedActionError` and logging `execution_blocked_unapproved` if missing, pending, rejected, or expired.
+2. **Simulated Integration Backends**: `MockFirewallBackend` validates IP addresses via `ipaddress.ip_address()` and tracks blocked IPs/domains/URLs in memory (configured with `IR_FIREWALL_API_URL`), alongside `MockEDRBackend` (host isolation/scan, account disable, password reset) and `MockWorkflowBackend` (email quarantine, evidence preservation, SOC alerting/escalation).
+3. **Rollback & Auditability**: Supports analyst-attributed `rollback(action_id, analyst_id)` and maintains an append-only execution audit log.
+**Why:** Satisfies `ARCHITECTURE.md` §4.8 / §8 and `AGENTS.md` guardrails while enabling safe, network-isolated testing of full containment workflows.
+**Status:** Final
+
+---
+
+## D028 — Finite-State Incident Lifecycle Tracker and IR REST API Gateway
+
+**Date:** 2026-11-12
+**Decision:** Implemented `IncidentStateTracker` (`src/incident_response/state_tracker.py`) and wired Phase 7 into `src/api/main.py`:
+1. **Validated State Machine**: Enforces `ALLOWED_TRANSITIONS` across `IncidentPhase` (`new` -> `investigating` -> `containing` -> `contained` -> `remediating` -> `remediated` -> `closed`, plus explicit reopen from `closed` -> `investigating`), rejecting invalid jumps or self-transitions with `InvalidStateTransitionError`.
+2. **REST Gateway Integration**: Exposed `/api/ir/recommend/{incident_id}`, `/api/ir/approvals`, `/api/ir/approvals/{request_id}/approve|reject`, `/api/ir/execute/{action_id}` (returning HTTP 403 on unapproved actions), `/api/ir/incidents/{incident_id}/state|transition`, and `/api/ir/stats`.
+**Why:** Completes `ARCHITECTURE.md` §4.8 and `REQUIREMENTS.md` §1.8 with an auditable lifecycle trail and REST control plane.
+**Status:** Final
+
+---
+
+## D029 — Software completion scope and evidence-grounded reporting
+
+**Date:** 2026-11-12
+**Decision:** Defer ESP32 at the user's explicit request. Complete the software workflows and replace the dashboard, retaining human approval for containment. Add missing completion gates rather than treating earlier checkboxes as production verification. Automated Copilot tests use offline/mock responses; keep gpt-4o-mini for configured use. Reporting receives serialized snapshots through the API orchestration layer and does not import another module's internals. Generate JSON, escaped standalone HTML (also printable) and Markdown deterministically without LLM calls. Report observed facts and source IDs, not generic attack narratives.
+**Why:** The user requests working, tested software and a new dashboard with limited API spend. Existing report text asserts activity absent from its evidence.
+**Status:** Final
+
+---
+
+## D030 — Forensic report provenance and intake boundary
+
+**Date:** 2026-11-12
+**Decision:** Generate case reports only from evidence registered in the vault, re-verify bytes immediately before analysis, reject missing/corrupt or historically flagged evidence, and include full hashes plus custody records. Add bounded base64 intake (configurable 10 MiB default), reject path-like filenames, and exclude storage paths from API responses. API orchestration passes serialized evidence/analysis snapshots to reporting. The initial gateway wiring uses the existing memory backend; durable MinIO/Postgres and authenticated acquisition identity are explicit outstanding completion gates.
+**Why:** Reports must be usable with real uploads and must not certify stale or corrupted evidence. Keeping storage limitations visible prevents the report milestone from overstating platform completeness.
+**Status:** Final
+
+---
+
+## D031 — Historical evidence integrity failures remain flagged
+
+**Date:** 2026-11-12
+**Decision:** Reject requests to disable evidence access hash checks. A subsequent matching hash verifies current bytes but does not erase an earlier integrity failure; retain the tamper flag and require reacquisition under a new evidence ID before analysis. Keep prior custody records. Pytest overrides the OpenAI key before application imports; provider tests must inject mocks.
+**Why:** Replacing corrupted bytes does not restore continuous provenance, and optional verification violated the forensic guardrail. Automated regression must not spend the user's limited AI credits.
+**Status:** Final
+
+---
+
+## D032 — Durable forensic repository and failure boundaries
+
+**Date:** 2026-11-12
+**Decision:** Default the gateway to MinIO evidence bytes plus Postgres metadata and separate append-only custody rows. Database triggers reject custody rewrites/intake-field changes and clearing historical tamper flags; row locks serialize custody appends across processes. Initialize lazily with bounded timeouts, retry failed initialization and return 503 on storage outages. Memory mode is explicit and used in unit tests. Persist an access entry before releasing evidence bytes. If an object write succeeds but the database commit is uncertain, retain the object and fail intake rather than risk deleting committed evidence; administrative orphan reconciliation is not automatic. Storage outages are not evidence of tampering.
+**Why:** Evidence/custody must survive restarts and concurrent analysis without lost audit records; a temporary store outage must not silently downgrade durability or falsely accuse evidence modification.
+**Status:** Final
+
+---
+
 ## Template for New Entries
 
 ```

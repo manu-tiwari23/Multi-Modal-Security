@@ -378,7 +378,7 @@ class BrowserHistoryEntry(BaseModel):
     """Forensic navigation history record."""
     url: str
     title: Optional[str] = None
-    visit_time: datetime
+    visit_time: Optional[datetime] = None
     visit_count: int = 1
     typed_count: int = 0
     browser_type: BrowserType = BrowserType.UNKNOWN
@@ -388,7 +388,7 @@ class BrowserDownloadEntry(BaseModel):
     """Forensic browser file download artifact."""
     target_path: str
     source_url: str
-    start_time: datetime
+    start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     total_bytes: int = 0
     state: str = "complete"  # "complete", "cancelled", "interrupted"
@@ -403,7 +403,7 @@ class BrowserCookieEntry(BaseModel):
     host: str
     name: str
     path: str = "/"
-    creation_time: datetime
+    creation_time: Optional[datetime] = None
     expires_time: Optional[datetime] = None
     is_secure: bool = False
     is_httponly: bool = False

@@ -438,7 +438,7 @@ class FileAnalyzer:
                                 evidence_match=b64[:60] + "...",
                             )
                         )
-                    elif any(token.encode() in decoded.lower() for token in [b"powershell", b"cmd.exe", b"/bin/sh", b"wget", b"curl"]):
+                    elif any(token in decoded.lower() for token in [b"powershell", b"cmd.exe", b"/bin/sh", b"wget", b"curl"]):
                         indicators.append(
                             SuspiciousIndicator(
                                 category="encoded_payload",

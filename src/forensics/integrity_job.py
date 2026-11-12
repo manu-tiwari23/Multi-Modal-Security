@@ -11,6 +11,8 @@ Complies with ARCHITECTURE.md §4.5, §8 and REQUIREMENTS.md §1.5:
 
 from __future__ import annotations
 
+from src.forensics.repository import EvidenceStoreUnavailable
+
 import logging
 import threading
 import time
@@ -88,6 +90,9 @@ class IntegrityVerifierJob:
             if not self.vault.storage.exists(storage_key):
                 raise FileNotFoundError(f"Evidence key '{storage_key}' not found in storage backend.")
             data = self.vault.storage.retrieve(storage_key)
+        except EvidenceStoreUnavailable:
+            # An outage is not proof of lost/tampered evidence. Fail closed and retry.
+            raise
         except Exception as exc:
             # File missing or storage unreachable
             detail = EvidenceIntegrityDetail(
@@ -113,8 +118,7 @@ class IntegrityVerifierJob:
                 status=CustodyStatus.MISMATCH,
                 notes=f"CRITICAL: Missing evidence artifact during integrity sweep ({exc}).",
             )
-            metadata.custody_history.append(custody_entry)
-            metadata.is_tampered = True
+            self.vault.record_custody(metadata, custody_entry, tampered=True)
 
             self._publish_tamper_event(
                 detail=detail,
@@ -160,9 +164,10 @@ class IntegrityVerifierJob:
                 actual_sha256=actual_sha256,
                 expected_md5=metadata.md5,
                 actual_md5=actual_md5,
-                is_tampered=False,
+                is_tampered=metadata.is_tampered,
                 checked_at=now,
-                notes="Cryptographic hash matches intake baseline.",
+                notes=("Cryptographic hash matches intake baseline; prior integrity failure remains flagged."
+                       if metadata.is_tampered else "Cryptographic hash matches intake baseline."),
             )
             custody_entry = ChainOfCustodyEntry(
                 evidence_id=evidence_id,
@@ -173,8 +178,8 @@ class IntegrityVerifierJob:
                 status=CustodyStatus.VERIFIED,
                 notes="Integrity re-verification passed successfully.",
             )
-            metadata.custody_history.append(custody_entry)
-            metadata.is_tampered = False
+            self.vault.record_custody(metadata, custody_entry)
+            detail.is_tampered = metadata.is_tampered
             return detail
         else:
             # Hash mismatch — evidence tampered or corrupted!
@@ -200,8 +205,7 @@ class IntegrityVerifierJob:
                 status=CustodyStatus.MISMATCH,
                 notes=f"CRITICAL: Cryptographic hash mismatch during integrity verification! (Expected: {metadata.sha256[:12]}..., Got: {actual_sha256[:12]}...)",
             )
-            metadata.custody_history.append(custody_entry)
-            metadata.is_tampered = True
+            self.vault.record_custody(metadata, custody_entry, tampered=True)
 
             self._publish_tamper_event(
                 detail=detail,

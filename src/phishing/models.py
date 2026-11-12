@@ -148,6 +148,8 @@ class PhishingVerdict(BaseModel):
     verdict_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     email_id: Optional[str] = None
     target_url: Optional[str] = None
+    target_filename: Optional[str] = None
+    attachment_sha256: Optional[str] = None
     analysis_type: str = "email"  # "email", "url", "attachment"
     score: float = 0.0  # 0.0 (safe) to 100.0 (confirmed phishing)
     severity: PhishingSeverity = PhishingSeverity.SAFE
@@ -172,6 +174,8 @@ class PhishingVerdict(BaseModel):
             "analysis_type": self.analysis_type,
             "email_id": self.email_id,
             "target_url": self.target_url,
+            "target_filename": self.target_filename,
+            "attachment_sha256": self.attachment_sha256,
             "score": self.score,
             "severity": self.severity.value,
             "is_phishing": self.is_phishing,
@@ -238,3 +242,99 @@ class URLScanResult(BaseModel):
     verdict: PhishingVerdict
     features: Optional[URLFeatures] = None
     threat_intel: Optional[ThreatIntelResult] = None
+
+
+# ---------------------------------------------------------------------------
+# Attachment Analyzer Specific Models
+# ---------------------------------------------------------------------------
+
+class AttachmentFeatures(BaseModel):
+    """Extracted static and metadata features of an email attachment."""
+    filename: str
+    declared_extension: str = ""
+    claimed_content_type: str = "application/octet-stream"
+    detected_file_type: str = "unknown"
+    size_bytes: int = 0
+    sha256: str = ""
+    md5: str = ""
+    shannon_entropy: float = 0.0
+    has_double_extension: bool = False
+    has_rtlo_override: bool = False
+    is_extension_spoofed: bool = False
+    is_executable: bool = False
+    is_script: bool = False
+    is_archive: bool = False
+    is_macro_enabled: bool = False
+    has_embedded_macros: bool = False
+    has_external_template: bool = False
+    has_pdf_active_content: bool = False
+    has_html_smuggling: bool = False
+    is_encrypted_archive: bool = False
+    is_zip_bomb_suspect: bool = False
+    archive_members: list[str] = Field(default_factory=list)
+    archive_suspicious_members: list[str] = Field(default_factory=list)
+    extracted_urls: list[str] = Field(default_factory=list)
+    suspicious_strings: list[str] = Field(default_factory=list)
+
+
+class AttachmentScanResult(BaseModel):
+    """Composite container holding attachment features, hash intel, and verdict."""
+    filename: str
+    verdict: PhishingVerdict
+    features: AttachmentFeatures
+    threat_intel: Optional[ThreatIntelResult] = None
+
+
+# ---------------------------------------------------------------------------
+# Explanation Generator Models
+# ---------------------------------------------------------------------------
+
+class CategoryContribution(BaseModel):
+    """Aggregated score contribution for a single phishing signal category."""
+    category: SignalCategory
+    category_label: str
+    signal_count: int
+    raw_points: float
+    share_percent: float
+    highest_severity: PhishingSeverity
+    top_signals: list[str] = Field(default_factory=list)
+
+
+class SignalAttribution(BaseModel):
+    """Individual signal contribution explaining why a verdict scored as it did."""
+    signal_name: str
+    category: str
+    severity: PhishingSeverity
+    score_contribution: float
+    share_percent: float
+    reason: str
+    evidence: str = ""
+    mitre_technique: Optional[str] = None
+
+
+class MitreMappingDetail(BaseModel):
+    """Human-readable MITRE ATT&CK technique reference."""
+    technique_id: str
+    technique_name: str
+    tactic: str
+
+
+class StructuredExplanation(BaseModel):
+    """Auditable, layered explanation of why a phishing verdict scored as it did."""
+    verdict_id: str
+    analysis_type: str
+    target_summary: str
+    score: float
+    raw_score: float = 0.0
+    score_capped: bool = False
+    severity: PhishingSeverity
+    is_phishing: bool
+    confidence: float
+    headline: str
+    narrative: str
+    category_breakdown: list[CategoryContribution] = Field(default_factory=list)
+    top_factors: list[SignalAttribution] = Field(default_factory=list)
+    mitre_details: list[MitreMappingDetail] = Field(default_factory=list)
+    recommended_actions: list[str] = Field(default_factory=list)
+    formatted_text: str = ""
+    formatted_markdown: str = ""

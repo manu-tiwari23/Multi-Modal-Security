@@ -366,9 +366,14 @@ class EmailAnalyzer:
         "low": 20.0,
     }
 
-    def __init__(self, url_scanner: Optional[Any] = None) -> None:
-        """Initialize EmailAnalyzer with optional URLScanner."""
+    def __init__(
+        self,
+        url_scanner: Optional[Any] = None,
+        attachment_analyzer: Optional[Any] = None,
+    ) -> None:
+        """Initialize EmailAnalyzer with optional URLScanner and AttachmentAnalyzer."""
         self.url_scanner = url_scanner
+        self.attachment_analyzer = attachment_analyzer
 
     def analyze(self, email: ParsedEmail) -> PhishingVerdict:
         """Analyze a parsed email for phishing indicators.
@@ -810,6 +815,21 @@ class EmailAnalyzer:
                     evidence=f"File: {att.filename} ({att.extension}), Size: {att.size_bytes}B",
                     mitre_technique="T1566.001",
                 ))
+
+            # Optional AttachmentAnalyzer deep inspection (hash intel, double ext, RTLO)
+            if self.attachment_analyzer:
+                try:
+                    att_verdict = self.attachment_analyzer.scan_metadata(att)
+                    for asig in att_verdict.signals:
+                        if asig.name in (
+                            "rtlo_filename_spoofing",
+                            "double_extension_masquerading",
+                            "attachment_hash_threat_intel_match",
+                            "script_attachment",
+                        ) and not any(s.name == asig.name for s in signals):
+                            signals.append(asig)
+                except Exception:
+                    pass
 
         return signals
 

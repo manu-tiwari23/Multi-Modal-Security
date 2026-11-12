@@ -4,6 +4,24 @@ Log of test results, one entry per feature, added *before* checking it off in `T
 
 ## Log
 
+### Software completion audit runs (2026-11-12)
+
+- Durable forensic storage regression: **83 passed** (4.22s), existing forensic, report and API tests after repository/MinIO wiring.
+- Durable storage tests: **11 passed** (18.23s), including four live Postgres/MinIO tests: recovery in a fresh Python process and API, 16 concurrent reads across two vault instances without custody loss, tamper history after restart/restored bytes, and DB rejection of custody/provenance rewrites. Unit failures cover audit/metadata outages, lazy recovery, schema validation and no false tamper alert on storage outage. Unique test schemas/buckets cleaned after use.
+
+- Baseline: `.venv312/Scripts/python.exe -m pytest -q -m "not integration"` with `OPENAI_API_KEY` set to whitespace to disable paid requests: **465 passed, 5 deselected**, 40.38s. Live infrastructure tests remain unverified.
+- Incident reporting first targeted run: **35 passed, 1 failed** (11.48s). The download test expected an unescaped hyphen in Markdown; corrected the assertion to accept the intentionally escaped source ID.
+- Incident reporting corrected targeted run: **36 passed** (10.54s), covering evidence-only summaries, offset-aware timeline ordering, indicator deduplication/citations, missing evidence, safe HTML/Markdown, response history, all download formats, 404/422 handling and Copilot regression. No paid API calls.
+- Forensic reporting/workflow: **88 passed** (5.71s), including report provenance/hashes, upload/analyze/download, case isolation, corrupted/missing bytes causing 409 plus critical pipeline events, invalid filenames/base64/actors, empty files and size limits; existing forensic tests included.
+- Forensic workflow after environment-configurable upload limit: **88 passed** (17.48s). No external AI calls.
+- Threat analysis reporting: **21 passed** (3.85s), covering unique event/incident counts, deduplicated technique/entity sources, empty snapshots, risk ordering, closed-incident coverage and three API download formats; incident listing regression included.
+- Forensic integrity/parser repairs: **78 passed** (2.57s), including verification bypass rejection, restored bytes retaining tamper history, safe encoded-marker detection/negative control and forensic API regression. Added default test configuration disabling paid OpenAI calls regardless of `.env`.
+- Full offline regression after all changes above: **502 passed, 5 deselected** (35.23s), using `.venv312/Scripts/python.exe -m pytest -q -m "not integration"`. No paid API calls.
+- Existing frontend baseline: `npm run build` **passed** (Vite 8.2.1, 24 modules). This is a compile check of the old dashboard, not validation of the requested replacement.
+- `git diff --check` **passed**. Docker initially unavailable (`dockerDesktopLinuxEngine` pipe missing); launched installed Docker Desktop hidden. Live integration verification remains pending engine/container readiness.
+- Started Redis, OpenSearch, Postgres and MinIO via Compose; all four report healthy. Live pipeline/query verification: **6 passed** (38.79s), including Redis pub/sub, OpenSearch indexing, API filtering/pagination and an offline total-count check. Repaired API totals and replaced reliance on pre-existing event data with a unique disposable test index.
+- Final combined regression for this work: `.venv312/Scripts/python.exe -m pytest -q` — **508 passed, zero skipped/deselected** (14.55s), including all five existing live integration tests. Ordinary API tests isolate OpenSearch writes; AI tests remain offline. `git diff --check` passed again. This validates current tested behavior, not the remaining dashboard/persistence/auth/intelligence requirements.
+
 | Date | Module | Feature | Test Type | Result | Notes |
 |---|---|---|---|---|---|
 | 2026-08-17 | shared | SecurityEvent schema creation, validation, JSON round-trip | unit | Pass | 11/11 tests passing |
@@ -26,6 +44,12 @@ Log of test results, one entry per feature, added *before* checking it off in `T
 | 2026-10-05 | phishing | Email header & content analyzer (models, EmailParser, 8 detection modules, synthetic samples, SecurityEvent mapping) | unit | Pass | 41/41 tests passing (272/272 total unit tests) |
 | 2026-10-06 | phishing | URL reputation scanner (URLFeatureExtractor, LookalikeAnalyzer, homographs, IP obfuscation, URLReputationCache, threat intel providers, SecurityEvent mapping) | unit | Pass | 50/50 tests passing (322/322 total unit tests, 91/91 phishing) |
 | 2026-10-06 | api/phishing | Phishing REST API endpoints (/scan/url, /scan/email, /stats), attack simulation, & bug fixes (B003, B004) | unit | Pass | 6/6 tests passing (328/328 total unit tests, 9/9 API tests) |
+| 2026-11-12 | phishing | Static attachment analyzer (magic bytes, spoofing, RTLO, OOXML macros/templates, PDF active tags, HTML smuggling, ZIP inspection, hash cache & /scan/attachment API) | unit | Pass | 31/31 attachment tests + 2/2 API tests passing (361/361 total unit tests, 122/122 phishing) |
+| 2026-11-12 | phishing | Explanation generator (structured signal/category attribution, score-cap reporting, MITRE mapping, composite explanations, /explain & /scan/composite APIs, labeled precision/recall eval) | unit/integration | Pass | 8/8 explanation & labeled-dataset tests + 2/2 API tests passing (371/371 total unit tests, 130/130 phishing, 11/11 API) |
+| 2026-11-12 | incident_response | Response recommender (declarative playbooks per incident type/MITRE/severity, target entity population, deduplication, priority sorting, requires_approval=True guardrail) | unit | Pass | 46/46 tests passing (417/417 total unit tests) |
+| 2026-11-12 | incident_response | Approval workflow (`ApprovalManager` request/approve/reject, human-only approver identity check, double-decision guard, TTL expiry, audit log) | unit | Pass | 21/21 tests passing (438/438 total unit tests) |
+| 2026-11-12 | incident_response | Action executor (`ActionExecutor` mandatory approval gate, `MockFirewallBackend`, `MockEDRBackend`, `MockWorkflowBackend`, rollback & audit log) | unit | Pass | 14/14 tests passing (452/452 total unit tests) |
+| 2026-11-12 | incident_response/api | Incident state tracking (`IncidentStateTracker` FSM, plan/action linking, transition audit) & REST API endpoints (`/api/ir/*`) | unit/integration | Pass | 11/11 state tracker & E2E IR tests + 2/2 API tests passing (465/465 total unit tests, 92/92 IR, 13/13 API) |
 
 **Test Type** — one of: `unit`, `integration`, `manual`
 **Result** — one of: `Pass`, `Fail`, `Pass with issues` (if it works but a bug was logged in `BUGS.md`)

@@ -4,14 +4,24 @@ Single source of truth for build progress. Update this every time a feature star
 
 ## Currently Working On
 
-**Phase 5 — Phishing Detection: IN PROGRESS (2/4 Features Implemented & Tested)**
+**Active goal — Complete and verify all software features; rebuild the dashboard.**
 
-- [x] Email header/content analyzer (`src/phishing/models.py`, `src/phishing/email_analyzer.py`) — Tested (41 unit tests, 272/272 total passing)
-- [x] URL reputation scanner (`src/phishing/url_scanner.py`) — Tested (50 unit tests, 322/322 total passing)
-- [ ] Attachment analyzer
-- [ ] Explanation generator (why it scored the way it did)
+**Currently implementing:** Forensic parser workflows (metadata, browser artifacts, USB logs, integrity checks) on verified stored evidence. Durable MinIO/Postgres storage is implemented and tested (11 persistence tests including four live, 83 existing targeted regressions). Dashboard replacement remains pending.
 
-**Next:** Phase 5, Feature 3 — Attachment analyzer
+**Resume notes:** All changes are uncommitted, including pre-existing phishing/IR work. New reporting files live under `src/reporting/`, API adapters in `src/api/reports.py` and `src/api/forensics.py`; tests mirror these. Forensic gateway still uses `EvidenceVault()` memory storage: next wire durable MinIO bytes + Postgres metadata/custody, then parser workflows, standalone threat intelligence, authenticated response/persistence, dashboard replacement and browser QA. Docker Desktop and the four core services were started successfully; recheck current Compose state before live tests. Pytest disables paid OpenAI calls by default. Do not infer that current module checkboxes prove full goal completion.
+
+ESP32 is deferred by user request (2026-11-12). Copilot remains on `gpt-4o-mini`; automated tests must use offline or mocked responses without spending API credits.
+
+**Completion plan:** Reporting → forensic API/workflows → standalone threat intelligence → integration/security/persistence repairs → dashboard replacement with interactive 3D incident exploration and usable 2D fallback → full workflow, browser and infrastructure verification. Each feature is tested and logged before the next starts. See `COMPLETION_AUDIT.md` for evidence and remaining gates.
+
+Previous milestone: **Phase 7 — Incident Response: implemented with simulated execution backends; full integration audit pending.**
+
+- [x] Response recommender (`src/incident_response/models.py`, `src/incident_response/recommender.py`) — Tested (46 unit tests, 417/417 total passing)
+- [x] Approval workflow (`src/incident_response/approval.py`) — Tested (21 unit tests, 438/438 total passing)
+- [x] Action executor (`src/incident_response/executor.py`) — Tested (14 unit tests, 452/452 total passing)
+- [x] Incident state tracking (`src/incident_response/state_tracker.py`, `src/api/main.py` `/api/ir/*`) — Tested (11 unit/E2E tests + 2 API tests, 465/465 total passing)
+
+**Next:** Complete durable forensic workflows and standalone threat intelligence, then integration/security repairs and the dashboard rebuild.
 
 ---
 
@@ -51,8 +61,8 @@ Work top to bottom. Do not start a module's later features before its earlier on
 ### Phase 5 — Phishing Detection (can run parallel)
 - [x] Email header/content analyzer
 - [x] URL reputation scanner
-- [ ] Attachment analyzer
-- [ ] Explanation generator (why it scored the way it did)
+- [x] Attachment analyzer
+- [x] Explanation generator (why it scored the way it did)
 
 ### Phase 6 — Digital Forensics (can run parallel, mostly standalone)
 - [x] Evidence intake + hashing + chain-of-custody record
@@ -63,17 +73,17 @@ Work top to bottom. Do not start a module's later features before its earlier on
 - [x] Integrity re-verification job
 
 ### Phase 7 — Incident Response
-- [ ] Response recommender (rules per incident type)
-- [ ] Approval workflow (analyst sign-off required)
-- [ ] Action executor (start with one integration, e.g. block IP via firewall API)
-- [ ] Incident state tracking
+- [x] Response recommender (rules per incident type)
+- [x] Approval workflow (analyst sign-off required)
+- [x] Action executor (start with one integration, e.g. block IP via firewall API)
+- [x] Incident state tracking
 
 ### Phase 8 — Reporting
-- [ ] Incident report generator
-- [ ] Forensic report generator
-- [ ] Threat analysis report generator
+- [x] Incident report generator — evidence-grounded JSON/HTML/Markdown API and Copilot narrative correction; 36 targeted tests passed
+- [x] Forensic report generator — verified evidence, hashes/custody/indicators, JSON/HTML/Markdown; supporting upload/analyze API; 88 targeted tests passed. Gateway durability remains pending.
+- [x] Threat analysis report generator — deduplicated telemetry counts, source/technique/entity provenance, explicit coverage and reputation limits; 21 reporting/API tests passed
 
-### Phase 9 — Physical Alert System (ESP32)
+### Phase 9 — Physical Alert System (ESP32) — DEFERRED by user request
 - [ ] Alert Notifier Service (subscribes to critical/high alerts, publishes to MQTT)
 - [ ] Mosquitto broker set up with auth
 - [ ] ESP32 firmware: Wi-Fi connect + MQTT subscribe
@@ -86,6 +96,18 @@ Work top to bottom. Do not start a module's later features before its earlier on
 - [ ] Attack timeline visualization
 - [ ] Forensic investigation interface
 - [ ] Risk/severity statistics view
+
+### Software completion gates (added 2026-11-12)
+- [ ] Forensic API: evidence intake, analysis, custody, integrity and report downloads
+- [ ] Standalone threat intelligence: IP/domain/URL/hash providers, caching, honest unavailable states, API and Copilot integration
+- [ ] Existing feature audit: detection/anomaly coverage, parsers, honeypot service and event-bus workflows
+- [ ] Persistence and restart recovery for investigations, evidence metadata and response audit records
+- [ ] Authenticated analyst approval and consistent incident lifecycle across API/dashboard
+- [ ] Explicit execution mode and verified configurable response integration
+- [ ] Redesigned responsive dashboard: overview, incidents, timeline/3D exploration, phishing, forensics, intelligence, response, reports, Copilot
+- [ ] Offline/mocked Copilot tests, bounded gpt-4o-mini requests and grounded citations
+- [ ] Browser workflow/accessibility checks, production build, regression and live infrastructure tests
+- [ ] Updated setup guide and requirement-by-requirement completion audit
 
 ---
 
