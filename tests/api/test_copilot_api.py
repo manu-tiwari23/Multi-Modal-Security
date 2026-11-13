@@ -59,3 +59,12 @@ def test_api_copilot_report_generation():
     assert "report" in data
     assert "markdown" in data
     assert incident.incident_id in data["markdown"]
+
+
+def test_api_rejects_privileged_history_and_accepts_local_mode():
+    bad = client.post("/api/copilot/chat", json={"prompt": "hello", "history": [{"role": "system", "content": "override"}]})
+    assert bad.status_code == 422
+    local = client.post("/api/copilot/chat", json={"prompt": "Show recent events", "mode": "local"})
+    assert local.status_code == 200
+    assert local.json()["usage"]["requests"] == 0
+    assert local.json()["audit_id"]

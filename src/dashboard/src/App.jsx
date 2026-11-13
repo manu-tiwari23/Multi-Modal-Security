@@ -1,5 +1,15 @@
+import AccountView from './components/AccountView.jsx'
+import ResponseView from './components/ResponseView.jsx'
+import PhishingView from './components/PhishingView.jsx'
+import ForensicsView from './components/ForensicsView.jsx'
+import ReportsView from './components/ReportsView.jsx'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { apiFetch } from './api.js'
+import IntelligenceView from './components/IntelligenceView.jsx'
+import './workspace.css'
 import Navigation from './components/Navigation.jsx'
+import GlobeOverview from './components/GlobeOverview.jsx'
+import OverviewView from './components/OverviewView.jsx'
 import CopilotView from './components/CopilotView.jsx'
 import AlertsView from './components/AlertsView.jsx'
 import HoneypotView from './components/HoneypotView.jsx'
@@ -9,8 +19,14 @@ import SimulatorView from './components/SimulatorView.jsx'
 
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/events/live`
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState('copilot')
+export default function App({ user }) {
+  const [activeTab, setActiveTab] = useState('overview')
+  const [copilotOpen, setCopilotOpen] = useState(false)
+  const copilotDialog = useRef(null)
+  useEffect(() => {
+    if (copilotOpen) copilotDialog.current?.showModal()
+    else copilotDialog.current?.close()
+  }, [copilotOpen])
   const [events, setEvents] = useState([])
   const [liveAlerts, setLiveAlerts] = useState([])
   const [connected, setConnected] = useState(false)
@@ -27,7 +43,7 @@ export default function App() {
   // Fetch health and pipeline stats
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch('/api/health')
+      const res = await apiFetch('/api/health')
       if (res.ok) {
         const data = await res.json()
         setPipelineStats((prev) => ({
@@ -42,16 +58,6 @@ export default function App() {
       // ignore if offline
     }
   }, [])
-
-  // Calculate severity stats
-  const stats = events.reduce(
-    (acc, e) => {
-      acc.total++
-      acc[e.severity] = (acc[e.severity] || 0) + 1
-      return acc
-    },
-    { total: 0, low: 0, medium: 0, high: 0, critical: 0 },
-  )
 
   // WebSocket connection handler
   const connect = useCallback(() => {
@@ -88,8 +94,12 @@ export default function App() {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       setConnected(false)
+      if (event.code === 1008) {
+        window.dispatchEvent(new Event('mms-session-expired'))
+        return
+      }
       reconnectTimer.current = setTimeout(connect, 3000)
     }
 
@@ -101,7 +111,9 @@ export default function App() {
   // Initial event fetching
   const fetchInitial = useCallback(async () => {
     try {
-      const res = await fetch('/api/events?size=100')
+      const alertResponse = await apiFetch('/api/alerts')
+      if (alertResponse.ok) setLiveAlerts((await alertResponse.json()).alerts || [])
+      const res = await apiFetch('/api/events?size=100')
       if (res.ok) {
         const data = await res.json()
         setEvents(data.events || [])
@@ -116,75 +128,51 @@ export default function App() {
     fetchInitial()
     connect()
 
-    // 2-second periodic stats polling so metrics never freeze
-    const pollInterval = setInterval(() => {
-      fetchStats()
-    }, 2000)
+    // Poll authoritative snapshots to recover missed live messages and lifecycle changes.
+    const pollInterval = setInterval(fetchStats, 5000)
+    const recoveryInterval = setInterval(fetchInitial, 15000)
 
     return () => {
       clearInterval(pollInterval)
+      clearInterval(recoveryInterval)
       clearTimeout(reconnectTimer.current)
-      wsRef.current?.close()
+      if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close() }
     }
   }, [connect, fetchInitial, fetchStats])
 
   return (
-    <div className="app">
-      {/* Top Header */}
-      <header className="header">
-        <div className="header__brand">
-          <div className="header__logo">🛡️</div>
-          <div>
-            <h1 className="header__title">Multi Modal Security</h1>
-            <p className="header__subtitle">
-              Integrated SOC • AI Copilot • Honeypot • Forensics • Phishing
-            </p>
-          </div>
-        </div>
-
-        <div className="header__status-box">
-          <div className={`status-badge ${connected ? 'status-badge--connected' : 'status-badge--disconnected'}`}>
-            <span className="status-badge__dot" />
-            {connected ? 'Pipeline Active' : 'Offline / Standalone'}
-          </div>
-        </div>
-      </header>
-
-      {/* Global Security Metrics Bar */}
-      <div className="stats-bar">
-        <div className="stat-card stat-card--alerts" onClick={() => setActiveTab('alerts')}>
-          <div className="stat-card__label">Active Alerts</div>
-          <div className="stat-card__value">{pipelineStats.active_alerts || 0}</div>
-        </div>
-        <div className="stat-card stat-card--incidents" onClick={() => setActiveTab('alerts')}>
-          <div className="stat-card__label">Correlated Incidents</div>
-          <div className="stat-card__value">{pipelineStats.active_incidents || 0}</div>
-        </div>
-        <div className="stat-card stat-card--honeypot" onClick={() => setActiveTab('honeypot')}>
-          <div className="stat-card__label">Honeypot Sessions</div>
-          <div className="stat-card__value">{pipelineStats.honeypot_sessions || 0}</div>
-        </div>
-        <div className="stat-card stat-card--rules" onClick={() => setActiveTab('rules')}>
-          <div className="stat-card__label">Detection Rules</div>
-          <div className="stat-card__value">{pipelineStats.rules_loaded || 5}</div>
-        </div>
-        <div className="stat-card stat-card--total" onClick={() => setActiveTab('events')}>
-          <div className="stat-card__label">Total Ingested Events</div>
-          <div className="stat-card__value">{events.length || stats.total}</div>
-        </div>
-      </div>
-
-      {/* Primary Navigation Tabs */}
-      <Navigation
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        alertCount={pipelineStats.active_alerts}
-        sessionCount={pipelineStats.honeypot_sessions}
-      />
-
+    <div className="security-workspace">
+      <aside className="workspace-sidebar">
+        <div className="workspace-brand"><span>◈</span><div>MMS<small>Security operations</small></div></div>
+        <Navigation role={user?.role} activeTab={activeTab} setActiveTab={setActiveTab}
+          alertCount={pipelineStats.active_alerts} sessionCount={pipelineStats.honeypot_sessions} />
+        <div className="workspace-connection"><span className={connected ? 'connection-dot live' : 'connection-dot'} />{connected ? 'Telemetry connected' : 'Telemetry unavailable'}</div>
+      </aside>
+      <div className="workspace-body">
+      <header className="workspace-header"><span>WORKSPACE / {activeTab.toUpperCase()}</span><span>Multi Modal Security</span></header>
       {/* Main Tab Views */}
       <main className="main-content">
-        {activeTab === 'copilot' && <CopilotView />}
+        {activeTab === 'overview' && (
+          <OverviewView
+            connected={connected}
+            pipelineStats={pipelineStats}
+            events={events}
+            liveAlerts={liveAlerts}
+            onNavigate={(tab) => setActiveTab(tab)}
+            onCopilot={() => setCopilotOpen(true)}
+            canUseCopilot={user?.role !== 'viewer'}
+            onRefresh={() => {
+              fetchStats()
+              fetchInitial()
+            }}
+          />
+        )}
+        {activeTab === 'phishing' && <PhishingView role={user?.role} />}
+        {activeTab === 'forensics' && <ForensicsView user={user} />}
+        {activeTab === 'account' && <AccountView user={user} />}
+        {activeTab === 'response' && <ResponseView user={user} />}
+        {activeTab === 'reports' && <ReportsView />}
+        {activeTab === 'intelligence' && <IntelligenceView role={user?.role} />}
         {activeTab === 'alerts' && <AlertsView alerts={liveAlerts} />}
         {activeTab === 'honeypot' && <HoneypotView />}
         {activeTab === 'events' && <EventFeed events={events} />}
@@ -198,6 +186,12 @@ export default function App() {
           />
         )}
       </main>
+      </div>
+      {user?.role !== 'viewer' && <button className="copilot-launcher" onClick={() => setCopilotOpen(true)} aria-haspopup="dialog">✦ Ask Copilot</button>}
+      <dialog ref={copilotDialog} className="copilot-dialog" onClose={() => setCopilotOpen(false)} aria-labelledby="copilot-panel-title">
+        <div className="copilot-panel-heading"><h2 id="copilot-panel-title">Investigation assistant</h2><button autoFocus onClick={() => setCopilotOpen(false)} aria-label="Close Copilot">✕</button></div>
+        {copilotOpen && <CopilotView />}
+      </dialog>
     </div>
   )
 }

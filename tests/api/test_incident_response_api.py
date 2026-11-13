@@ -51,17 +51,17 @@ def test_api_ir_full_workflow_with_approval_gate():
     exec_unapproved = client.post(f"/api/ir/execute/{action_id}")
     assert exec_unapproved.status_code == 403
 
-    # 3. Attempting approval as "copilot" MUST return 400
+    # 3. A caller cannot claim a different identity from the authenticated principal.
     bad_approve = client.post(
         f"/api/ir/approvals/{request_id}/approve",
         json={"analyst_id": "copilot", "reason": "auto"},
     )
-    assert bad_approve.status_code == 400
+    assert bad_approve.status_code == 403
 
     # 4. Analyst approves
     approve_res = client.post(
         f"/api/ir/approvals/{request_id}/approve",
-        json={"analyst_id": "alice@soc", "reason": "Confirmed brute force"},
+        json={"reason": "Confirmed brute force"},
     )
     assert approve_res.status_code == 200
     assert approve_res.json()["decision"]["status"] == "approved"
@@ -69,12 +69,12 @@ def test_api_ir_full_workflow_with_approval_gate():
     # 5. Transition incident state: new -> investigating -> containing
     t1 = client.post(
         f"/api/ir/incidents/{inc_id}/transition",
-        json={"to_phase": "investigating", "actor": "alice@soc", "reason": "Triage"},
+        json={"to_phase": "investigating", "reason": "Triage"},
     )
     assert t1.status_code == 200
     t2 = client.post(
         f"/api/ir/incidents/{inc_id}/transition",
-        json={"to_phase": "containing", "actor": "alice@soc", "reason": "Blocking IP"},
+        json={"to_phase": "containing", "reason": "Blocking IP"},
     )
     assert t2.status_code == 200
 
@@ -87,7 +87,7 @@ def test_api_ir_full_workflow_with_approval_gate():
     # 7. Transition to contained & check state + stats
     t3 = client.post(
         f"/api/ir/incidents/{inc_id}/transition",
-        json={"to_phase": "contained", "actor": "alice@soc", "reason": "IP blocked"},
+        json={"to_phase": "contained", "reason": "IP blocked"},
     )
     assert t3.status_code == 200
 
@@ -122,7 +122,7 @@ def test_api_ir_reject_blocks_execution():
 
     rej = client.post(
         f"/api/ir/approvals/{req['request_id']}/reject",
-        json={"analyst_id": "bob@soc", "reason": "Authorized internal scanner"},
+        json={"reason": "Authorized internal scanner"},
     )
     assert rej.status_code == 200
     assert rej.json()["request"]["status"] == "rejected"

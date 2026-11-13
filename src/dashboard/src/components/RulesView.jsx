@@ -1,3 +1,4 @@
+import { apiFetch } from '../api.js'
 import React, { useState, useEffect } from 'react'
 
 export default function RulesView() {
@@ -7,7 +8,7 @@ export default function RulesView() {
   useEffect(() => {
     const fetchRules = async () => {
       try {
-        const res = await fetch('/api/rules')
+        const res = await apiFetch('/api/rules')
         if (res.ok) {
           const data = await res.json()
           setRules(data.rules || [])
@@ -83,3 +84,4 @@ export default function RulesView() {
     </div>
   )
 }
+

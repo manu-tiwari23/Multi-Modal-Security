@@ -1,0 +1,71 @@
+.security-workspace { min-height: calc(100vh - 42px); display: grid; grid-template-columns: 206px minmax(0, 1fr); background: #080e16; color: #e5edf2; }
+.workspace-sidebar { border-right: 1px solid #20303d; padding: 30px 16px; display: flex; flex-direction: column; gap: 34px; }
+.workspace-brand { display: flex; gap: 13px; align-items: center; font-size: 23px; font-weight: 650; letter-spacing: 3px; padding: 0 10px; }
+.workspace-brand > span { color: #6ee7d2; font-size: 32px; }
+.workspace-brand small { display: block; font-size: 10px; color: #8b9da8; letter-spacing: 1px; margin-top: 5px; font-weight: 400; }
+.workspace-nav { display: flex; flex-direction: column; gap: 7px; }
+.workspace-nav button { display: flex; align-items: center; gap: 12px; text-align: left; color: #91a4af; background: transparent; border: 1px solid transparent; padding: 12px; border-radius: 7px; cursor: pointer; font: inherit; font-size: 13px; }
+.workspace-nav button:hover { background: #13222c; color: #fff; }
+.workspace-nav button[aria-current] { color: #9af3df; background: #12302f; border-color: #22504b; }
+.workspace-nav button > span { width: 18px; font-size: 20px; }
+.workspace-nav small { margin-left: auto; color: #ff8e88; }
+.workspace-connection { margin-top: auto; color: #83949f; font-size: 11px; display: flex; align-items: center; gap: 7px; }
+.connection-dot { width: 6px; height: 6px; border-radius: 50%; background: #b2986b; }
+.connection-dot.live { background: #6ee7d2; box-shadow: 0 0 10px #6ee7d255; }
+.workspace-body { min-width: 0; }
+.workspace-header { display: flex; justify-content: space-between; padding: 26px 32px; color: #83949f; font-size: 10px; letter-spacing: 2px; border-bottom: 1px solid #16252e; }
+.security-workspace .main-content { padding: 24px 30px 90px; max-width: 1600px; margin: auto; width: 100%; }
+.copilot-launcher { position: fixed; right: 30px; bottom: 24px; z-index: 20; padding: 14px 21px; border-radius: 30px; background: #b0f6e5; color: #102b29; border: 1px solid #c7fff1; font-weight: 600; cursor: pointer; box-shadow: 0 6px 28px #0006; }
+.copilot-dialog { position: fixed; inset: auto 18px 18px auto; margin: 0; width: min(780px, calc(100vw - 36px)); max-height: 88vh; background: #101925; color: #eef5fa; border: 1px solid #39505c; border-radius: 16px; padding: 22px; overflow: auto; }
+.copilot-dialog::backdrop { background: #0008; backdrop-filter: blur(3px); }
+.copilot-panel-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.copilot-panel-heading h2 { font-size: 16px; }
+.copilot-panel-heading button { border: 1px solid #43545f; background: transparent; color: white; padding: 8px 12px; border-radius: 7px; cursor: pointer; }
+.tool-page { max-width: 1050px; margin: 12px auto; }
+.tool-page header { margin-bottom: 28px; }
+.eyebrow { font-size: 10px; letter-spacing: 2px; color: #83cbbb; margin-bottom: 10px; }
+.tool-page h1 { font-size: clamp(25px, 3vw, 36px); font-weight: 500; margin-bottom: 10px; letter-spacing: -1px; }
+.tool-page header > p:last-child, .tool-hint { color: #91a4af; font-size: 13px; line-height: 1.7; }
+.provider-status { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 18px; color: #a4b3bc; font-size: 12px; }
+.tool-card { padding: 26px; background: #101b26; border: 1px solid #263741; border-radius: 12px; margin: 18px 0; }
+.tool-card label { display: block; font-size: 13px; margin-bottom: 10px; }
+.tool-card input:not([type=checkbox]) { width: 100%; border: 1px solid #3b515c; background: #0a131c; color: #eef6f8; padding: 13px; border-radius: 6px; margin-bottom: 20px; font: inherit; }
+.tool-card .checkbox-line { display: flex; gap: 10px; align-items: center; }
+.tool-card button { padding: 11px 18px; background: #a4e9da; color: #15332f; border: 0; border-radius: 6px; cursor: pointer; margin-top: 18px; font-weight: 600; }
+.tool-card button:disabled { opacity: .5; cursor: wait; }
+.tool-error { color: #ffaaa3; padding: 16px; background: #391e25; border-radius: 8px; }
+.tool-notice { color: #dec69f; padding: 20px; border: 1px solid #615438; border-radius: 8px; }
+.intelligence-result h2 { overflow-wrap: anywhere; font-size: 22px; margin-bottom: 16px; }
+.result-verdict { text-transform: capitalize; color: #e2d8b5; margin-bottom: 10px; }
+.provider-result { border-top: 1px solid #293a44; padding-top: 18px; margin-top: 18px; }
+.provider-result h3 { font-size: 15px; margin-bottom: 8px; }
+.provider-result small { font-size: 11px; color: #91a4af; font-weight: 400; margin-left: 12px; }
+.tool-limitations { padding-left: 18px; margin-top: 20px; color: #91a4af; font-size: 12px; line-height: 1.8; }
+.security-workspace :focus-visible { outline: 2px solid #a4e9da; outline-offset: 4px; }
+@media(max-width: 850px) { .security-workspace { grid-template-columns: 1fr; } .workspace-sidebar { padding: 15px; gap: 14px; border-right: 0; border-bottom: 1px solid #20303d; } .workspace-brand { font-size: 18px; } .workspace-nav { flex-direction: row; overflow-x: auto; } .workspace-nav button { flex-shrink: 0; padding: 8px 12px; } .workspace-connection { display: none; } .workspace-header { padding: 18px; } .workspace-header > span:last-child { display: none; } .security-workspace .main-content { padding: 16px 14px 90px; } .tool-card { padding: 18px; } .copilot-launcher { right: 18px; bottom: 18px; } }
+
+.tool-card select, .tool-card textarea { width: 100%; padding: 12px; background: #0a131c; border: 1px solid #3b515c; color: #eef6f8; border-radius: 6px; font: inherit; margin-bottom: 20px; }
+.tool-card textarea { resize: vertical; }
+.tool-card h2 { font-size: 21px; font-weight: 500; margin: 8px 0 16px; overflow-wrap: anywhere; }
+.tool-card > p { margin-bottom: 12px; line-height: 1.7; }
+.tool-card summary { cursor: pointer; color: #a4e9da; padding: 5px 0; }
+.tool-card details > form { margin-top: 18px; }
+.hash-text { font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; color: #b1c4ce; margin: 8px 0; }
+.evidence-text { white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px; background: #080f18; font-size: 12px; margin: 10px 0; max-height: 250px; overflow-y: auto; }
+.evidence-layout { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 18px; align-items: start; margin-top: 20px; }
+.evidence-list { display: grid; gap: 8px; max-height: 650px; overflow-y: auto; }
+.evidence-list > button { text-align: left; background: #101b26; color: #dde9ed; border: 1px solid #263741; border-radius: 8px; padding: 17px; cursor: pointer; overflow-wrap: anywhere; }
+.evidence-list > button[aria-pressed=true] { border-color: #74cdb9; background: #15302f; }
+.evidence-list small { display: block; margin-top: 8px; color: #91a4af; }
+.evidence-detail { margin-top: 0; min-width: 0; }
+.action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.tool-card .secondary-action { background: transparent; border: 1px solid #5a8177; color: #a4e9da; margin-left: 10px; }
+.custody-trail { margin-top: 25px; border-top: 1px solid #2d404b; padding-top: 18px; }
+.custody-trail ol { padding-left: 20px; font-size: 12px; }
+.custody-trail li { margin-top: 18px; line-height: 1.7; }
+.findings-fields > div { padding: 9px 0; border-bottom: 1px solid #263741; }
+.findings-fields dt { text-transform: capitalize; color: #91a4af; font-size: 12px; margin-bottom: 6px; }
+.findings-fields dd { font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.findings-list { padding-left: 20px; }
+.findings-list > li { margin: 8px 0; }
+@media(max-width: 700px) { .evidence-layout { grid-template-columns: 1fr; } .evidence-list { max-height: 280px; } }

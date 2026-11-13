@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +47,9 @@ class ToolCallRecord(BaseModel):
     success: bool = True
     error_message: Optional[str] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    retrieved_ids: list[str] = Field(default_factory=list)
+    result_sha256: Optional[str] = None
+    limitations: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +63,7 @@ class ContainmentRecommendation(BaseModel):
     action_type: str  # e.g. "block_ip", "isolate_host", "revoke_credentials", "quarantine_file"
     target: str       # e.g. "203.0.113.88", "prod-web-01", "root"
     rationale: str
-    requires_approval: bool = True
+    requires_approval: Literal[True] = True
     priority: Literal["low", "medium", "high", "critical"] = "high"
 
 
@@ -72,19 +75,20 @@ class ContainmentRecommendation(BaseModel):
 class ChatMessage(BaseModel):
     """Single message in a multi-turn Copilot conversation."""
 
-    role: Literal["user", "assistant", "system", "tool"]
-    content: str
-    name: Optional[str] = None
-    tool_calls: Optional[list[dict[str, Any]]] = None
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
 
 
 class CopilotQuery(BaseModel):
     """Input payload for a Copilot interaction."""
 
-    prompt: str
-    session_id: Optional[str] = None
-    incident_id: Optional[str] = None
-    history: list[ChatMessage] = Field(default_factory=list)
+    model_config = ConfigDict(extra="forbid")
+    prompt: str = Field(min_length=1, max_length=4000, pattern=r"\S")
+    session_id: Optional[str] = Field(default=None, max_length=128)
+    incident_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=12)
+    mode: Literal["auto", "local"] = "auto"
 
 
 class CopilotResponse(BaseModel):
@@ -98,6 +102,9 @@ class CopilotResponse(BaseModel):
     model: str = "mms-copilot-gpt4"
     execution_time_ms: float = 0.0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    audit_id: str = Field(default_factory=lambda: str(uuid4()))
+    limitations: list[str] = Field(default_factory=list)
+    usage: dict[str, int] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

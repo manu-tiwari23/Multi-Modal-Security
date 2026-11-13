@@ -1,3 +1,4 @@
+import { apiFetch } from '../api.js'
 import React, { useState, useEffect, useRef } from 'react'
 
 export default function CopilotView() {
@@ -38,7 +39,7 @@ export default function CopilotView() {
 
   // Fetch loaded tools on mount
   useEffect(() => {
-    fetch('/api/copilot/tools')
+    apiFetch('/api/copilot/tools')
       .then((res) => res.json())
       .then((data) => setToolsList(data.tools || []))
       .catch(() => {})
@@ -61,7 +62,7 @@ export default function CopilotView() {
     setIsLoading(true)
 
     try {
-      const res = await fetch('/api/copilot/chat', {
+      const res = await apiFetch('/api/copilot/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: promptToSend }),
@@ -119,12 +120,12 @@ export default function CopilotView() {
     setIsLoading(true)
     try {
       // Find active incidents
-      const incRes = await fetch('/api/incidents')
+      const incRes = await apiFetch('/api/incidents')
       if (incRes.ok) {
         const incData = await incRes.json()
         const activeInc = incData.incidents?.[0]
         if (activeInc) {
-          const repRes = await fetch('/api/copilot/reports/generate', {
+          const repRes = await apiFetch('/api/copilot/reports/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ incident_id: activeInc.incident_id }),
@@ -333,3 +334,4 @@ export default function CopilotView() {
     </div>
   )
 }
+

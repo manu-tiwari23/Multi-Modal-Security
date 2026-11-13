@@ -82,3 +82,17 @@ def test_compose_response_appends_grounding_footer():
     assert "Grounding Evidence & Citations" in resp.answer
     assert "[IOC: 203.0.113.88]" in resp.answer
     assert resp.execution_time_ms == 45.0
+
+
+def test_citations_include_all_returned_events_and_preserve_typed_ids():
+    events = [{"event_id": str(i), "source": "soc", "event_type": "auth_failure"} for i in range(12)]
+    records = [ToolCallRecord(tool_name="query_logs"), ToolCallRecord(tool_name="get_incident")]
+    outputs = [{"events": events}, {"incident_id": "0", "risk_score": 20, "timeline": events}]
+    citations = ResponseComposer.extract_citations_from_tools(records, outputs)
+    assert len(citations) == 13
+    assert {c.type for c in citations if c.id == "0"} == {"event", "incident"}
+
+
+def test_negated_or_quoted_actions_do_not_become_recommendations():
+    result = ResponseComposer.compose_response("question", "Do not block IP 203.0.113.7 or isolate host web-test.", [], [])
+    assert result.recommendations == []

@@ -82,7 +82,7 @@ def test_document_metadata_contains_collected_author():
     assert len(result["sha256"]) == 64
 
 
-@pytest.mark.parametrize("xml", [b"x" * (512 * 1024 + 1), b'<!DOCTYPE test [<!ENTITY sample "sample">]><test/>'])
+@pytest.mark.parametrize("xml", [b"x" * (512 * 1024 + 1), b'<!DOCTYPE test [<!ENTITY sample "sample">]><test/>'], ids=["oversized", "entity-declaration"])
 def test_metadata_xml_resource_or_entity_limits(xml):
     with pytest.raises(ValueError, match="XML"):
         analyze_evidence_bytes(docx(xml), "bounded.docx", "metadata")

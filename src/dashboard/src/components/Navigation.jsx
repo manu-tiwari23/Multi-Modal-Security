@@ -1,37 +1,18 @@
-import React from 'react'
+const tabs = [
+  ['overview', 'Overview', '◉'], ['alerts', 'Incidents', '◎'],
+  ['intelligence', 'Intelligence', '◇'], ['honeypot', 'Honeypot', '⬡'],
+  ['phishing', 'Phishing', '⌁'], ['forensics', 'Forensics', '▧'], ['reports', 'Reports', '▤'],
+  ['events', 'Telemetry', '≋'], ['rules', 'Detection rules', '⌘'],
+  ['response', 'Response', '↗'], ['account', 'Account & access', '⚙'],
+  ['simulator', 'Simulation lab', '↯'],
+]
 
-export default function Navigation({ activeTab, setActiveTab, alertCount, sessionCount }) {
-  const tabs = [
-    { id: 'copilot', label: 'AI Security Copilot', icon: '🤖' },
-    { id: 'alerts', label: 'SOC Alerts & Incidents', icon: '🚨', badge: alertCount },
-    { id: 'honeypot', label: 'Honeypot & Deception', icon: '🍯', badge: sessionCount },
-    { id: 'events', label: 'Live Telemetry', icon: '📡' },
-    { id: 'rules', label: 'Sigma Rules', icon: '🎯' },
-    { id: 'simulator', label: 'Attack Simulator', icon: '⚡' },
-  ]
-
-  return (
-    <nav className="nav-tabs" role="tablist">
-      {tabs.map((tab) => {
-        const isActive = activeTab === tab.id
-        return (
-          <button
-            key={tab.id}
-            role="tab"
-            aria-selected={isActive}
-            className={`nav-tab ${isActive ? 'nav-tab--active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <span className="nav-tab__icon">{tab.icon}</span>
-            <span className="nav-tab__label">{tab.label}</span>
-            {tab.badge !== undefined && tab.badge > 0 && (
-              <span className={`nav-tab__badge ${tab.id === 'alerts' ? 'nav-tab__badge--alert' : ''}`}>
-                {tab.badge}
-              </span>
-            )}
-          </button>
-        )
-      })}
-    </nav>
-  )
+export default function Navigation({ activeTab, setActiveTab, alertCount, role }) {
+  return <nav className="workspace-nav" aria-label="Workspace">
+    {tabs.filter(([id]) => role !== 'viewer' || id !== 'simulator').map(([id, label, icon]) =>
+      <button key={id} aria-current={activeTab === id ? 'page' : undefined} onClick={() => setActiveTab(id)}>
+        <span aria-hidden="true">{icon}</span>{label}
+        {id === 'alerts' && alertCount > 0 && <small>{alertCount}</small>}
+      </button>)}
+  </nav>
 }

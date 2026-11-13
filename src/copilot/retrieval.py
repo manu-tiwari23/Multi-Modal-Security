@@ -9,55 +9,27 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 from opensearchpy import OpenSearch
 
 from src.shared.config import settings
 from src.shared.event_schema import SecurityEvent
-from src.soc.correlation.engine import CorrelationEngine
-from src.soc.correlation.incident_model import Incident
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Known Mock Threat Intelligence Database (Enrichment Fallback)
-# ---------------------------------------------------------------------------
+class IncidentSource(Protocol):
+    """API-injected source interface; no import of another module's internals."""
+    @property
+    def active_incidents(self) -> list[Any]: ...
 
-KNOWN_IOC_DATABASE: dict[str, dict[str, Any]] = {
-    "203.0.113.88": {
-        "ioc": "203.0.113.88",
-        "type": "ip",
-        "threat_score": 92,
-        "classification": "Malicious Scanner / Botnet Node",
-        "actor_group": "DarkMirai-Cluster",
-        "country": "NL",
-        "asn": "AS12345 Suspicious Hosting LLC",
-        "tags": ["brute_force", "honeypot_target", "ssh_scanner"],
-        "known_cve": ["CVE-2023-48795", "CVE-2024-6387"],
-    },
-    "185.220.101.42": {
-        "ioc": "185.220.101.42",
-        "type": "ip",
-        "threat_score": 85,
-        "classification": "Tor Exit Node / Reconnaissance Source",
-        "actor_group": "Unknown",
-        "country": "DE",
-        "asn": "AS54321 Privacy Net",
-        "tags": ["tor_exit", "port_scanner", "anonymizer"],
-        "known_cve": [],
-    },
-    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855": {
-        "ioc": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "type": "sha256",
-        "threat_score": 100,
-        "classification": "Linux ELF Mirai Dropper Binary",
-        "actor_group": "Mirai Variant",
-        "tags": ["dropper", "elf_binary", "malware"],
-    },
-}
+    def get_incident(self, incident_id: str) -> Any: ...
 
+
+# ---------------------------------------------------------------------------
+# Threat reputation is supplied by the API layer; no fabricated fallback data.
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Log Retriever (OpenSearch + In-Memory Buffer)
@@ -83,10 +55,12 @@ class LogRetriever:
         event_type: Optional[str] = None,
         severity: Optional[str] = None,
         source: Optional[str] = None,
-        limit: int = 20,
+        limit: int = 10,
     ) -> list[dict[str, Any]]:
         """Query security logs matching the specified filters."""
         results: list[dict[str, Any]] = []
+        if type(limit) is not int or not 1 <= limit <= 25:
+            raise ValueError("Log retrieval limit must be between 1 and 25")
 
         # 1. Try OpenSearch query if client is active
         if self.os_client is not None:
@@ -114,6 +88,7 @@ class LogRetriever:
                 res = self.os_client.search(index=settings.opensearch_events_index, body=body)
                 for hit in res.get("hits", {}).get("hits", []):
                     results.append(hit["_source"])
+                return results  # An empty successful query is authoritative.
             except Exception as exc:
                 logger.debug("OpenSearch search failed in LogRetriever: %s", exc)
 
@@ -133,6 +108,7 @@ class LogRetriever:
             if source:
                 filtered = [e for e in filtered if e.source == source]
 
+            filtered.sort(key=lambda e: e.timestamp, reverse=True)
             results = [e.model_dump(mode="json") for e in filtered[:limit]]
 
         return results
@@ -146,7 +122,7 @@ class LogRetriever:
 class IncidentRetriever:
     """Retrieves full incident records, timelines, linked entities, and score breakdowns."""
 
-    def __init__(self, correlation_engine: CorrelationEngine) -> None:
+    def __init__(self, correlation_engine: IncidentSource) -> None:
         self.engine = correlation_engine
 
     def get_incident_context(self, incident_id: str) -> Optional[dict[str, Any]]:
@@ -199,8 +175,13 @@ class IncidentRetriever:
                 "primary_user": inc.primary_entity.user,
                 "primary_host": inc.primary_entity.host,
             }
-            for inc in self.engine.active_incidents
+            for inc in sorted(self.engine.active_incidents, key=lambda item: item.updated_at, reverse=True)
         ]
+
+    def correlated_incidents(self, ip: str) -> list[dict[str, Any]]:
+        ids = {inc.incident_id for inc in self.engine.active_incidents
+               if any(entity.ip == ip for entity in [inc.primary_entity, *inc.linked_entities])}
+        return [inc for inc in self.list_active_incidents() if inc["incident_id"] in ids]
 
 
 # ---------------------------------------------------------------------------
@@ -211,26 +192,24 @@ class IncidentRetriever:
 class ThreatIntelRetriever:
     """Queries known IOC databases and correlates with honeypot profiles."""
 
-    def __init__(self, honeypot_recorder: Optional[Any] = None) -> None:
+    def __init__(self, honeypot_recorder: Optional[Any] = None, lookup=None) -> None:
         self.honeypot_recorder = honeypot_recorder
+        self.lookup = lookup
 
     def lookup_ioc(self, ioc_value: str, ioc_type: Optional[str] = None) -> dict[str, Any]:
         """Perform IOC lookup across threat intel registry and honeypot captures."""
         val = ioc_value.strip().lower()
 
-        # Check threat intel database
-        if val in KNOWN_IOC_DATABASE:
-            info = dict(KNOWN_IOC_DATABASE[val])
-            info["found_in_threat_intel"] = True
-        else:
-            info = {
-                "ioc": ioc_value,
-                "type": ioc_type or ("ip" if "." in ioc_value else "hash"),
-                "threat_score": 10,
-                "classification": "Unclassified / Low Known Reputation",
-                "found_in_threat_intel": False,
-                "tags": [],
-            }
+        info = {"ioc": ioc_value, "type": ioc_type or "unknown", "threat_score": None,
+                "classification": "unknown", "found_in_threat_intel": False, "tags": [],
+                "providers": [], "limitations": ["No external reputation is available; absence of reputation does not imply safety."]}
+        if self.lookup is not None:
+            reputation = self.lookup(ioc_value, "hash" if ioc_type in ("sha256", "sha1", "md5") else ioc_type)
+            info.update({"ioc": reputation["indicator"]["value"], "type": reputation["indicator"]["type"],
+                "threat_score": reputation["score"], "classification": reputation["classification"],
+                "found_in_threat_intel": any(p["status"] == "ok" for p in reputation["providers"]),
+                "providers": reputation["providers"], "cached": reputation["cached"],
+                "checked_at": reputation["checked_at"], "limitations": reputation["limitations"]})
 
         # Check honeypot interaction history
         if self.honeypot_recorder is not None:
@@ -240,7 +219,7 @@ class ThreatIntelRetriever:
                 info["honeypot_interactions"] = len(matched_sessions)
                 info["honeypot_commands_seen"] = sum(len(s.commands) for s in matched_sessions)
                 info["honeypot_files_dropped"] = sum(len(s.artifacts) for s in matched_sessions)
-                info["threat_score"] = max(info.get("threat_score", 0), 85)
-                info["classification"] = "Active Attacker (Trapped in Honeypot)"
+                info["honeypot_session_ids"] = [s.session_id for s in matched_sessions]
+                info["local_observation"] = "Observed in local honeypot telemetry; this is separate from external reputation"
 
         return info

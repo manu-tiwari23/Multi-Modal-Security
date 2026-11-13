@@ -1,5 +1,9 @@
 # DECISIONS.md
 
+## Documentation decision — Academic report snapshot (2026-11-13)
+
+Use the current supplied mini-project template for structure and page geometry, the matching sample for typography, and the previous-year report only for presentation depth. Cover details are user supplied; submission month/year remains December 2026 from the template. Report software status as a 13 November 2026 snapshot, distinguishing historical passing checks, newer unverified construction and deferred work. Label generated concepts and the constructed UI representation rather than presenting them as real screenshots or completed hardware. Keep source DOCX files unchanged and deliver editable Word text/tables with separate PNG/SVG assets. This is a documentation choice and changes no implementation scope or software completion status.
+
 Architecture Decision Record (ADR) log. Every non-obvious technical or scope choice gets an entry here — this is what lets a future session (or a future you) understand *why* the code looks the way it does, not just what it does.
 
 Format: one entry per decision, newest at the bottom.
@@ -384,6 +388,45 @@ Format: one entry per decision, newest at the bottom.
 
 ---
 
+## D033 — Verified byte-only forensic API adapters
+
+**Date:** 2026-11-13
+**Decision:** Expose parser selection on the existing evidence analysis endpoint, always reading a verified vault copy and recording successful analysis. Browser snapshots are copied into temporary local files, queried read-only with row/time limits and supported-table validation; invalid timestamps stay unknown. USB adapters treat input strictly as text; no local path interpretation. Metadata ZIP/XML members are bounded and entity declarations rejected. Downloads are audited attachments. Carved artifacts become new evidence with parent hash and byte-range provenance; source bytes are unchanged. Browser cache/WAL not collected in a single SQLite upload are explicitly outside that analysis result, not silently claimed analyzed.
+**Why:** A usable forensic UI needs safe, auditable operations on stored evidence rather than unrestricted host paths or invented timestamps.
+**Status:** Final
+
+---
+
+## D034 — Provider-backed threat intelligence and explicit external disclosure
+
+**Date:** 2026-11-13
+**Decision:** Use `src/threat_intel/` (importable underscore package) for validated IP/domain/URL/hash lookups. Implement VirusTotal v3 report GETs and AbuseIPDB v2 check with bounded response sizes/timeouts, no redirects and no visited indicator URLs or uploaded file bytes. External requests require `allow_external=true`; private/reserved/test indicators remain local. Copilot consumes cached reputation via an API-injected callback and separately records local honeypot observations, without inventing scores/attribution. Cache successful/not-found results with TTL and bounded capacity in Postgres; outage/unknown states are explicit. Cache outages allow uncached provider results with `cache_status=unavailable`.
+**Why:** Replaces mock attribution presented as fact. VirusTotal's [IP report documentation](https://docs.virustotal.com/reference/ip-info) states that queried indicators can enter its dataset, so the UI must explain disclosure before an analyst requests external lookup. [URL report docs](https://docs.virustotal.com/reference/url-info), [file report docs](https://docs.virustotal.com/reference/file-info), [domain report docs](https://docs.virustotal.com/reference/domain-info), and [AbuseIPDB check docs](https://docs.abuseipdb.com/#check-endpoint) define the provider contracts. VT score is a weighted vendor flag ratio; AbuseIPDB score is its reported confidence. Neither is treated as a compromise probability; no flags do not prove safety.
+**Status:** Final — live Postgres cache/expiry and combined 576-test regression passed
+
+---
+
+## D035 — Evidence selection and bounded Copilot requests
+
+**Date:** 2026-11-13
+**Decision:** Keep `gpt-4o-mini` as requested. Retrieve relevant evidence before the first model call. The model interprets questions, requests allowlisted read-only tools and selects server-generated factual statements/review steps through a strict JSON schema; unverified model prose is never rendered as incident truth. Validate every selected fact against the exact context sent. This deliberately trades free-form narrative for verifiable source statements: merely appending a valid citation does not prove a model's claim. Local mode uses the same facts. Preserve missing indicators/unknown reputation and distinguish recorded detection annotations from confirmed activity. Only structured report recommendations become recommendation objects; quoted/negated prose does not.
+
+Bound requests to 3 per question by default, 700 output tokens each, 24,000 UTF-8 request bytes, 12-second per-request timeout and a 30-second pre-call overall deadline, with SDK retries disabled. Process-local rate/concurrency limits default to 12 requests/minute and 2 active AI flows. The HTTP timeout is an inactivity timeout, not an OS-enforced hard wall-clock cancellation; multi-worker global quotas belong with deployment/authentication. Bound tools to 25 records and 12,000 bytes, explicitly disclose shortened/omitted context and exclude raw/credential fields. Retain only four history messages as untrusted data, dropping older ones if necessary; reject caller-supplied system/tool roles. Expose audit IDs, source IDs, output hashes, coverage and token usage. Persistent append-only audit and past-incident/vector retrieval remain separate completion gates. Remove Copilot's direct SOC imports in favor of an API-injected source protocol.
+
+**Sources:** [Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) for strict tools, structured response format and `max_completion_tokens`; [GPT-4o mini](https://developers.openai.com/api/docs/models/gpt-4o-mini) for supported function calling/structured outputs. Inspected installed SDK signature and verified serialization with a mock transport. No real AI requests were needed.
+
+**Status:** Final — 71 focused checks passed
+
+---
+
+## D036 — Build-first completion and focused globe homepage
+
+**Date:** 2026-11-13
+**Decision:** Follow the user's updated instruction to build remaining features before a consolidated test/fix pass, superseding the earlier per-feature sequencing for this completion effort. Replace the crowded homepage with an interactive globe, real alert markers, concise status and corner Copilot access; keep detailed tools on separate pages. Positions are symbolic unless actual verified geolocation exists. Do not imply that zero alerts proves security, or invent attack traffic for visual effect. Initial projected globe implementation is in progress; final integration and browser verification remain required.
+**Status:** Implementation underway
+
+---
+
 ## Template for New Entries
 
 ```
@@ -395,6 +438,107 @@ Format: one entry per decision, newest at the bottom.
 **Status:** [Final / Open / Superseded by D0XX]
 ```
 
+
+
+
+
+## D037 — Durable response claims before backend effects
+
+**Date:** 2026-11-13
+**Decision:** Store response workflow records per incident in Postgres, using row locks for plan creation, approval decisions and execution claims. Commit append-only analyst audit entries in the same transaction. Commit an execution claim before calling a response backend; persist its result separately. A crash or ambiguous commit after the backend call leaves a claimed action that cannot automatically run again. Completed requests return their existing result. Approval must match the stored action type and target. This prevents duplicate execution but cannot promise exactly-once effects across an arbitrary external service; unresolved claims need operator reconciliation. Memory storage is explicit for tests; no silent fallback on storage outage.
+**Status:** Repository/service and gateway migration implemented; live verification and general SOC lifecycle synchronization pending.
+
+## D038 — Durable SOC correlation and response status projection
+
+**Date:** 2026-11-13
+**Decision:** Persist incident snapshots and processed event IDs in one Postgres transaction. Serialize entity correlation across workers with a database advisory lock; restore entity indexes from candidate snapshots within the correlation window. Project response lifecycle through an injected API callback: new/open, investigating or containing/investigating, contained or remediating/contained, remediated/resolved, closed/closed. SOC imports no response internals. Replayed event IDs cannot append duplicate timeline records. This prioritizes correctness over high-throughput parallel correlation; batching/sharding can follow measured load.
+**Status:** Implementation and live tests written; consolidated verification pending.
+
+## D039 — Acknowledged relay and reproducible alert projection
+
+**Date:** 2026-11-13
+**Decision:** Consume `events:raw` with the `mms-gateway` group starting at 0-0, retry owned pending messages, reclaim abandoned deliveries after 60 seconds, and acknowledge only after successful gateway processing. Invalid schema payloads go atomically to `events:invalid` with their source ID before acknowledgement; never broadcast them as events. Persistent mode requires successful OpenSearch indexing. Rebuild active alerts from durable incidents using deterministic incident-derived IDs and original incident timestamps, removing inactive lifecycle states. Multi-worker WebSocket fan-out and detection replay semantics remain separate audit items.
+**Status:** Implemented, tests written; consolidated verification pending.
+
+## D040 — Replay-stable detection and live fan-out
+
+**Date:** 2026-11-13
+**Decision:** Persist threshold counters and per-event detection results atomically under a database lock. Threshold state stores timestamps and event IDs, not raw payloads; a rule configuration digest separates counter versions. Replayed events return the original rule matches, preserving match IDs. Use Redis pub/sub only for cross-worker live delivery, with worker-origin echo suppression; durable ingestion remains Redis Streams/Postgres. Snapshot polling recovers transient UI subscription gaps.
+**Status:** Implemented; consolidated verification pending.
+
+## D041 — Persistent Copilot provenance without raw evidence retention
+
+**Date:** 2026-11-13
+**Decision:** Append query-start, per-tool retrieval and completion/failure records to Postgres. Context-local audit binding separates concurrent analysts. Persist source IDs, canonical JSON SHA-256 digests, timestamps, authenticated identity, model and usage; omit raw prompt/history/tool arguments/evidence/answer and exception messages. Hashes allow comparison with a supplied query or returned response without creating a second raw evidence store. Reject unaudited responses on storage failures. Owner/admin access only.
+**Status:** Implemented; verification pending.
+
+## D042 — Local lexical vectors for historical incident retrieval
+
+**Date:** 2026-11-13
+**Decision:** Store normalized sparse term-frequency vectors with incident summaries and content hashes in Postgres, ranking by exact cosine similarity. This is lexical retrieval, not neural semantic similarity; explicitly disclose synonym/semantic limitations. Use recorded titles, descriptions, tags, technique IDs and event types, omitting raw payloads/entities. Synchronize current source summaries before retrieval and exclude stale source IDs and the current incident. Add strict read-only search tool and historical-only facts/citations before model generation. No paid embedding calls or external evidence disclosure. Exact scans suit the current local deployment; high-volume approximate indexes remain a scale concern.
+**Status:** Implemented, regression cases written; consolidated verification pending.
+
+## D043 — Explicit firewall adapter contract and approval configuration binding
+
+**Date:** 2026-11-13
+**Decision:** Keep simulation default. Offer opt-in HTTP adapter for IP/egress blocks with persistent approval/execution claims, TLS, bearer authentication, idempotency key, bounded confirmation, no automatic retries/redirects and exact target matching. Bind plans to mode and endpoint fingerprint to prevent simulation approvals or another endpoint’s approvals authorizing live calls. Unsupported live actions fail explicitly. The adapter contract is documented; no vendor-specific compatibility or real containment is claimed from mock tests.
+**Status:** Implemented; consolidated verification pending.
+
+## D044 — Browser bundles and cache export scope
+
+**Date:** 2026-11-13
+**Decision:** Extend verified-byte analysis with a constrained browser ZIP format for database/WAL pairs and HAR cache metadata. Never extract arbitrary archive paths; only allow named root artifacts, bound expanded bytes and reject duplicate/encrypted/orphan members. Copy database/WAL into temporary analysis directories and preserve parent evidence plus member hashes. Cache support uses HAR observations and explicitly does not claim raw binary-cache decoding. Omit sensitive HAR contents and preserve unknown timestamps/cache status.
+**Status:** Implemented; consolidated verification pending.
+
+## D045 — Paired deleted-file evidence recovery
+
+**Date:** 2026-11-13
+**Decision:** Recover from two separately registered, hash-verified same-case artifacts. Validate Windows $I/$R naming and expected content length, or FreeDesktop .trashinfo/content naming. Treat original paths as metadata only and sanitize the derived basename. Preserve bytes in a new vault item with parent IDs and SHA-256 digests; originals remain untouched. Do not imply reconstruction of missing/overwritten content, and do not invent UTC offsets for timezone-less deletion metadata.
+**Status:** Implemented; regression cases written, consolidated verification pending.
+
+## D046 — Explainable rate anomaly detection
+
+**Date:** 2026-11-13
+**Decision:** Add a data-configured per-source/event-type/host rate detector using prior-bucket median and scaled MAD, a minimum count and warm-up. Persist counters in the shared detection snapshot; configuration digest prevents reuse of incompatible baselines. Emit auditable RuleMatch records with observations and threshold, deduplicate current bucket IDs, reset after long idle intervals and bound group/event state. Do not treat anomalies as compromise or assign fabricated MITRE techniques.
+**Status:** Implemented; synthetic regression cases written, consolidated verification pending.
+
+---
+
+## D047 — Command Center Overview Rebuild & Dynamic Threat Globe
+
+**Date:** 2026-11-13
+**Decision:** Upgrade the dashboard Overview page (`OverviewView.jsx`) to combine realistic geospatial cyber threat visualization with modern analytical charts and analyst quick actions:
+1. Replaced the generic dot-cloud globe with 18 realistic continental coordinate clusters (North America, South America, Europe, Africa, Asia, Australia/Oceania) rendered on a high-performance HTML5 Canvas with atmospheric glow, latitude/longitude graticules, and interactive 3D pointer drag rotation.
+2. Implemented dynamic attack heat state interpolation (`attackHeat` 0.0 -> 1.0) based on active alert severities. When an attack or critical alert occurs, the globe's atmosphere, inner planetary gradient, graticules, and landmass particles smoothly shift color from calm cyber cyan/teal to molten red/orange (`#ff3b30` / `#ff922b`), with animated expanding ground shockwaves and target reticle beacons.
+3. Integrated telemetry activity charts using `recharts` (`AreaChart` for 24-hour event telemetry rate with amber/rose gradient fills, `BarChart` for severity breakdown) alongside 4 high-density metric cards (Events Ingested, Active Incidents, Critical Alerts, Honeypot Sessions) with `lucide-react` icons.
+**Status:** Implemented, verified in production build (`vite build` passing with 2,477 modules), and operational.
+
+---
+
+## D048 — Sector-Segmented Globe Defense & Categorized Incident Detail Accordions
+
+**Date:** 2026-11-13
+**Decision:** 
+1. Divided the 3D threat globe into 6 geographic defense sectors (North America, South America, Europe, Africa, Asia, Oceania). Each sector maintains independent threat state interpolation: targeted attack sectors turn bright red with local beacon pins and shockwaves, sectors experiencing mild/moderate alerts turn orange, while unaffected sectors remain green.
+2. Corrected the 3D projection drag delta (`rotationY -= dx * 0.007`) so horizontal dragging follows the mouse cursor naturally.
+3. Simplified the Incidents tab (`AlertsView.jsx`): unexpanded cards display only essential metadata (priority, severity, title, host/IP chips, score meter), and expand on click into clean categorized tabs (`Overview`, `Detection & MITRE`, `Score Breakdown`, `Response Actions`).
+**Status:** Implemented, verified in production build, and operational.
+
+---
+
+## D049 — Connected Network Systems Topology Globe (Dot-Per-System)
+
+**Date:** 2026-11-13
+**Decision:** Replaced the continental landmass dot-cloud on the 3D globe with network host/system nodes:
+1. Each dot on the 3D sphere represents a distinct connected system/host (1 system = 1 dot, 2 systems = 2 dots, N systems = N dots). Removed all continental landmass clusters.
+2. The 3D globe is rendered as a dark holographic cyber sphere with wireframe latitude/longitude rings and ambient atmospheric glow.
+3. Each connected system node is rendered with its exact operational threat status:
+   - Green: Healthy, nominal, unattacked system.
+   - Orange: Mild warning, medium severity activity.
+   - Red: Active critical/high attack target, featuring localized ground shockwaves, pulsating beacon lines, and HUD leader tag boxes.
+4. When multiple systems are active, animated network mesh arcs with traveling packet indicators visualize live inter-system telemetry.
+5. Added interactive node count switcher buttons (`1 Dot`, `2 Dots`, `3 Dots`, `Auto`) in the HUD for instant testing and verification.
+**Status:** Implemented, verified in production build, and operational.
 
 
 

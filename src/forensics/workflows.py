@@ -13,7 +13,7 @@ from .file_analyzer import FileAnalyzer
 from .metadata_extractor import MetadataExtractor
 from .usb_analyzer import USBAnalyzer
 
-AnalysisKind = Literal["file", "metadata", "browser", "usb_setupapi", "usb_registry", "usb_syslog"]
+AnalysisKind = Literal["file", "metadata", "browser", "browser_bundle", "browser_cache_har", "usb_setupapi", "usb_registry", "usb_syslog"]
 
 
 def analyze_evidence_bytes(data: bytes, filename: str, kind: AnalysisKind = "file") -> dict:
@@ -28,6 +28,9 @@ def analyze_evidence_bytes(data: bytes, filename: str, kind: AnalysisKind = "fil
         return result.model_dump(mode="json")
     if kind == "browser":
         return _analyze_browser(data)
+    if kind in ("browser_bundle", "browser_cache_har"):
+        from .browser_bundle import analyze_browser_bundle, analyze_cache_har
+        return analyze_browser_bundle(data) if kind == "browser_bundle" else analyze_cache_har(data)
     if kind.startswith("usb_"):
         try:
             text = data.decode("utf-16") if data.startswith((b"\xff\xfe", b"\xfe\xff")) else data.decode("utf-8-sig")
@@ -69,12 +72,14 @@ def _check_metadata_container(data):
         raise ValueError("Invalid metadata archive") from exc
 
 
-def _analyze_browser(data):
+def _analyze_browser(data, wal=None):
     if not data.startswith(b"SQLite format 3\x00"):
         raise ValueError("Browser analysis requires a SQLite artifact database")
     with tempfile.TemporaryDirectory(prefix="mms-browser-") as directory:
         artifact = Path(directory) / "artifact.db"
         artifact.write_bytes(data)
+        if wal is not None:
+            artifact.with_name(artifact.name + "-wal").write_bytes(wal)
         try:
             with closing(sqlite3.connect(artifact.as_uri() + "?mode=ro", uri=True)) as conn:
                 conn.execute("PRAGMA trusted_schema=OFF")
@@ -99,13 +104,15 @@ def _analyze_browser(data):
             names = [name for table, name in (("urls", "History"), ("cookies", "Cookies")) if table in tables]
         for name in names:
             (Path(directory) / name).write_bytes(data)
+            if wal is not None:
+                (Path(directory) / (name + "-wal")).write_bytes(wal)
         result = BrowserAnalyzer().analyze_profile_directory(directory).model_dump(mode="json")
         if result["browser_type"] == "unknown":
             result["browser_type"] = "firefox" if is_firefox else "chrome"
         result["profile_dir"] = "uploaded evidence"
         result["summary"] = result["summary"].replace(directory, "uploaded evidence")
         result["limitations"] = [
-            "Only the uploaded SQLite snapshot was analyzed; uncollected WAL files, browser cache and encrypted cookie values are not included.",
+            "The supplied database and WAL copy were queried together; uncollected browser artifacts and encrypted cookie values are not included." if wal is not None else "Only the uploaded SQLite snapshot was analyzed; uncollected WAL files, browser cache and encrypted cookie values are not included.",
             "Invalid or missing timestamps remain unknown and are omitted from chronological timelines.",
         ]
         return result

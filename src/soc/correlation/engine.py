@@ -70,6 +70,16 @@ class CorrelationEngine:
         """Get an incident by ID."""
         return self._incidents.get(incident_id)
 
+    def restore(self, incidents: list[Incident]) -> None:
+        """Rebuild entity indexes from repository snapshots, oldest first."""
+        self.reset()
+        for incident in sorted(incidents, key=lambda item: item.updated_at):
+            self._incidents[incident.incident_id] = incident
+            if incident.status in ("open", "investigating"):
+                for entity in [incident.primary_entity, *incident.linked_entities]:
+                    for key in _extract_entity_keys(entity):
+                        self._entity_map[key] = incident.incident_id
+
     def list_incidents(self, status: IncidentStatus | None = None) -> list[Incident]:
         """List all incidents, optionally filtered by status."""
         if status:
@@ -160,6 +170,8 @@ class CorrelationEngine:
         existing_incident = self._find_matching_incident(entity_keys, event.timestamp)
 
         if existing_incident is not None:
+            if event.event_id in existing_incident.event_ids:
+                return existing_incident
             # Correlate into existing incident
             if event.event_id not in existing_incident.event_ids:
                 existing_incident.event_ids.append(event.event_id)

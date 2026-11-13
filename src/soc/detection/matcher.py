@@ -12,6 +12,7 @@ from typing import Any
 
 from src.shared.event_schema import Entity, SecurityEvent
 from src.soc.detection.rule_model import DetectionRule, RuleMatch, ThresholdConfig
+from .anomaly import RateAnomalyDetector
 
 logger = logging.getLogger(__name__)
 
@@ -180,9 +181,10 @@ class ThresholdStateTracker:
 class DetectionEngine:
     """Core detection engine evaluating SecurityEvents against Sigma rules."""
 
-    def __init__(self, rules: list[DetectionRule] | None = None) -> None:
+    def __init__(self, rules: list[DetectionRule] | None = None, anomaly_config=None) -> None:
         self._rules: list[DetectionRule] = rules or []
         self._tracker = ThresholdStateTracker()
+        self._anomaly = RateAnomalyDetector(anomaly_config) if anomaly_config else None
 
     @property
     def rules(self) -> list[DetectionRule]:
@@ -195,6 +197,24 @@ class DetectionEngine:
     def add_rule(self, rule: DetectionRule) -> None:
         """Add a single rule."""
         self._rules.append(rule)
+
+    def export_state(self) -> dict:
+        """Serialize threshold state for transactional storage, without raw event data."""
+        return {"windows": [{"rule": key[0], "group": key[1],
+                    "entries": [[timestamp, event_id] for timestamp, event_id, _ in window]}
+                for key, window in self._tracker._windows.items() if window],
+                "last_triggered": [[*key, timestamp] for key, timestamp in self._tracker._last_triggered.items()],
+                "anomaly": self._anomaly.snapshot() if self._anomaly else {}}
+
+    def restore_state(self, state: dict) -> None:
+        """Restore threshold counters; event payloads are not needed for counting."""
+        self._tracker.clear()
+        if self._anomaly:
+            self._anomaly.restore(state.get("anomaly", {}))
+        for item in state.get("windows", []):
+            self._tracker._windows[(item["rule"], item["group"])] = deque(
+                (timestamp, event_id, None) for timestamp, event_id in item["entries"])
+        self._tracker._last_triggered.update({(rule, group): timestamp for rule, group, timestamp in state.get("last_triggered", [])})
 
     def evaluate(self, event: SecurityEvent) -> list[RuleMatch]:
         """
@@ -256,6 +276,8 @@ class DetectionEngine:
                     )
                 )
 
+        if self._anomaly:
+            matches.extend(self._anomaly.evaluate(event))
         return matches
 
     def evaluate_batch(self, events: list[SecurityEvent]) -> list[RuleMatch]:
@@ -268,3 +290,5 @@ class DetectionEngine:
     def reset_state(self) -> None:
         """Reset internal threshold and state tracking."""
         self._tracker.clear()
+        if self._anomaly:
+            self._anomaly.restore({})

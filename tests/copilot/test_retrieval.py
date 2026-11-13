@@ -83,12 +83,16 @@ def test_incident_retriever():
     assert active_list[0]["incident_id"] == incident.incident_id
 
 
-def test_threat_intel_retriever_known_ioc():
+def test_threat_intel_retriever_does_not_invent_reputation():
     retriever = ThreatIntelRetriever()
     ioc_data = retriever.lookup_ioc("203.0.113.88")
-    assert ioc_data["found_in_threat_intel"] is True
-    assert ioc_data["threat_score"] == 92
-    assert "DarkMirai" in ioc_data["actor_group"]
+    assert ioc_data["found_in_threat_intel"] is False
+    assert ioc_data["threat_score"] is None
+    assert ioc_data["classification"] == "unknown"
+    assert "actor_group" not in ioc_data
+    empty_hash = retriever.lookup_ioc("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    assert empty_hash["classification"] == "unknown"
+    assert empty_hash["threat_score"] is None
 
 
 def test_threat_intel_retriever_with_honeypot_correlation():
@@ -101,4 +105,14 @@ def test_threat_intel_retriever_with_honeypot_correlation():
 
     assert ioc_data["honeypot_interactions"] == 1
     assert ioc_data["honeypot_commands_seen"] == 1
-    assert ioc_data["threat_score"] >= 85
+    assert ioc_data["threat_score"] is None
+    assert sess.session_id in ioc_data["honeypot_session_ids"]
+
+
+def test_empty_successful_opensearch_query_does_not_return_stale_memory():
+    class Search:
+        def search(self, **kwargs):
+            return {"hits": {"hits": []}}
+    event = SecurityEvent(event_id="stale", source="soc", event_type="auth_failure")
+    retriever = LogRetriever(opensearch_client=Search(), memory_buffer=[event])
+    assert retriever.query_logs() == []

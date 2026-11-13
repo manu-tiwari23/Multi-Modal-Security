@@ -33,8 +33,7 @@ def test_missing_incident_and_invalid_download_format(client):
 
 
 def test_report_uses_real_response_record(client, monkeypatch):
-    monkeypatch.setattr(api.ir_state_tracker, "is_tracked", lambda key: True)
-    monkeypatch.setattr(api.ir_state_tracker, "get_incident_record", lambda key: {"phase": "investigating", "transitions": []})
+    monkeypatch.setattr(api.get_response_service().repository, "get", lambda key: {"state": {"phase": "investigating", "transitions": []}})
     assert "status investigating" in client.get("/api/reports/incidents/report-api").json()["summary"]
 
 

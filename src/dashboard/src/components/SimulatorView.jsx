@@ -1,3 +1,4 @@
+import { apiFetch } from '../api.js'
 import React, { useState } from 'react'
 
 export default function SimulatorView({ onSimulationSuccess }) {
@@ -50,7 +51,7 @@ export default function SimulatorView({ onSimulationSuccess }) {
     ])
 
     try {
-      const res = await fetch('/api/simulate/attack', {
+      const res = await apiFetch('/api/simulate/attack', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scenario: scenarioId, attacker_ip: attackerIp }),
@@ -166,3 +167,4 @@ export default function SimulatorView({ onSimulationSuccess }) {
     </div>
   )
 }
+

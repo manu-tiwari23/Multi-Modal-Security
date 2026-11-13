@@ -17,6 +17,7 @@ handles the common case.
 from __future__ import annotations
 
 import logging
+from uuid import NAMESPACE_URL, uuid5
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -71,6 +72,11 @@ class AlertManager:
         Alert if one was created or updated, ``None`` if the score was
         below ``min_score_to_alert``.
         """
+        if incident.status not in ("open", "investigating"):
+            previous = self._alerts_by_incident.pop(incident.incident_id, None)
+            if previous:
+                self._alerts.pop(previous.alert_id, None)
+            return None
         # 1. Score the incident
         score, breakdown = score_incident(incident)
         incident.risk_score = score
@@ -114,6 +120,9 @@ class AlertManager:
         priority = priority_from_score(score)
 
         alert = Alert(
+            alert_id=str(uuid5(NAMESPACE_URL, f"mms:incident-alert:{incident.incident_id}")),
+            created_at=incident.created_at,
+            updated_at=incident.updated_at,
             title=incident.title,
             description=self._build_description(incident, breakdown),
             priority=priority,
@@ -162,7 +171,7 @@ class AlertManager:
         alert.mitre_techniques = list(dict.fromkeys(incident.mitre_techniques))
         alert.tags = list(dict.fromkeys(incident.tags))
         alert.description = self._build_description(incident, breakdown)
-        alert.updated_at = datetime.now(timezone.utc)
+        alert.updated_at = incident.updated_at
 
         logger.info(
             "Updated alert %s [%s] score=%.1f (incident %s now has %d events)",
@@ -215,6 +224,16 @@ class AlertManager:
     def get_alert(self, alert_id: str) -> Optional[Alert]:
         """Look up an alert by its ID."""
         return self._alerts.get(alert_id)
+
+    def synchronize(self, incidents: list[Incident]) -> None:
+        """Rebuild the active alert projection from authoritative incident snapshots."""
+        active = {incident.incident_id for incident in incidents if incident.status in ("open", "investigating")}
+        for incident_id in list(self._alerts_by_incident):
+            if incident_id not in active:
+                previous = self._alerts_by_incident.pop(incident_id)
+                self._alerts.pop(previous.alert_id, None)
+        for incident in incidents:
+            self.process_incident(incident)
 
     def get_alert_for_incident(self, incident_id: str) -> Optional[Alert]:
         """Look up the alert linked to a specific incident."""

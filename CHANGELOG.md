@@ -1,10 +1,28 @@
 # CHANGELOG.md
 
+### Documentation — 2026-11-13 academic report
+- Created an editable Word mini-project report using the supplied current template and sample typography, with student/guide details, implemented and planned scope, dated verification evidence, literature references and AI/ML appendices. Included 13 figures and supplied 11 editable SVG diagrams separately. No pending software completion gate was marked complete. Artifact formatting/package/render checks are recorded in TEST_REPORT.md; synthetic empty-state dashboard chart fallback was recorded in BUGS.md.
+
+### In progress — 2026-11-13 dashboard rebuild
+- Added account password/user/role/access controls and incident-response plan, approval, execution, lifecycle and result views. Added authenticated read-only response workflow endpoint with explicit simulation/process-local status. Consolidated verification pending.
+- Added dedicated phishing scan/result workflows, report downloads, and forensic evidence intake/list/detail/custody/verify/analyze/carve/download controls. UI verification remains deferred to the consolidated pass.
+- Added compact sidebar workspace, dedicated intelligence lookup with external-provider consent, and corner Copilot dialog. Globe remains the focused homepage. Implementation only: consolidated build/browser verification pending; remaining module pages are unfinished.
+
 All notable changes to MMS are logged here, one entry per completed and tested feature. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
 ### Added
+- Connected Network Systems 3D Globe: Re-architected `GlobeOverview.jsx` from geographical continent clouds to a network node topology visualizer. Each dot on the 3D globe represents an actual connected system/host (1 system connected = 1 dot, 2 systems = 2 dots, N systems = N dots). System nodes reflect live health: GREEN for nominal/secure nodes, ORANGE for mild activity, and RED for attacked systems with localized ground shockwaves, beacon leader lines, and HUD info pills. Added animated inter-system network mesh links with traveling packet indicators and an interactive node count selector (`1 Dot`, `2 Dots`, `3 Dots`, `Auto`).
+- Simplified & Categorized Incidents View (`AlertsView.jsx`): Transformed the Incidents tab activity cards to be clean, scannable, and low-clutter by default (showing priority/severity badge, title, host/IP quick chips, risk score meter, and toggle button). Clicking any activity expands dedicated categorized panels: `📋 Overview & Entities`, `🎯 Detection & MITRE`, `📊 Score Breakdown`, and `⚡ Response Actions`.
+
+### Fixed
+- 3D Globe Drag Direction: Inverted horizontal mouse delta projection (`rotationY.current -= dx * 0.007`) so the globe rotates smoothly and intuitively in the exact direction the user drags their cursor.
+- Dashboard Command Center Overview & Analytics: Integrated modernized telemetry views inspired by reference design (`OverviewView.jsx`), including 4 high-density metric cards (Events Ingested, Active Incidents, Critical Alerts, Honeypot Sessions) with `lucide-react` icons, an Analyst Quick Actions toolbar (direct attack simulation trigger, phishing email scan, threat intel lookup, and AI security copilot), and two `recharts` activity panels: Event Telemetry Rate (`AreaChart` with amber/rose gradients) and Severity Breakdown (`BarChart`).
+- Realistic 3D Cyber Threat Globe & Dynamic Attack Visualization: Completely upgraded `GlobeOverview.jsx` with 18 realistic continental landmass coordinate clusters, atmospheric halo glow, backface culling, latitude/longitude graticules, interactive pointer drag-to-rotate, ground shockwave ripples on impact sites, and animated attack vectors. Added dynamic movie-like color morphing where the entire globe's atmosphere corona, inner planetary gradient, graticules, and continental landmasses transition from calm cyber teal/cyan to molten red/orange attack heat (`#ff3b30` / `#ff922b`) when an attack is simulated or critical/high severity alerts are detected.
+- Copilot grounding and usage limits: retrieve evidence before AI, validate read-only tools/history, render only server-generated facts selected by the model, reject invented sources/free-form claims, and preserve unknown results. Added source IDs/output digests, complete timeline citations, explicit coverage, local mode, bounded context/output/request/time/rate/concurrency, no SDK retries and sanitized fallback. Corrected incident UUID targeting and removed invented default indicators/attack narratives (B012). Seventy-one focused checks pass with mocked OpenAI traffic.
+- Threat intelligence: Validated IP/domain/URL/hash lookup API, VirusTotal/AbuseIPDB report providers with explicit external opt-in, bounded TTL cache in Postgres, and local/cached Copilot integration. Missing configuration, errors and absent reputation remain unknown. Removed fabricated attribution. Live database cache/expiry passed; combined regression 576 passed without paid AI or live vendor requests.
+- Forensic workflows: Metadata/browser/USB analysis through verified evidence APIs, per-analysis custody entries, individual/case integrity checks, verified attachment downloads, and carving into new hashed evidence with parent/byte-range provenance. Bounded SQLite/XML parsing, explicit unsupported-schema errors, unknown browser timestamps preserved, uploaded text never interpreted as host paths. 36 workflow/API/browser checks passed.
 - Forensics persistence: Gateway defaults to MinIO object bytes and Postgres immutable intake metadata/append-only custody. Records survive fresh-process restart; concurrent audit writes are serialized per evidence item. Storage failures return 503 without memory fallback or false tamper classification. Eleven new persistence tests (including four live integration tests) and 83 existing targeted regressions passed.
 - API query verification: Corrected total event counts independently of page size, with filtered counts for both OpenSearch and memory. Live API tests now use an isolated temporary index; offline tests avoid indexing into developer stores. Six live/query checks passed with Redis/OpenSearch running (B011).
 - Forensic integrity hardening: Removed the optional hash-verification bypass, retained historical tamper flags after bytes are restored, and fixed silent encoded-marker parsing failures (B008/B009). Added offline-by-default pytest configuration to conserve OpenAI credits. 78 forensic/API tests passed.
@@ -94,3 +112,26 @@ When you reach a meaningful milestone (e.g. "Phase 1 complete", "MVP demo-ready"
 ```
 
 Keep entries short — one line per feature, written for a human skimming history, not a full description (that belongs in `DECISIONS.md` if it needs explaining).
+
+### In progress — durable incident response
+- Added transactional Postgres response repository, append-only audit, durable approval/lifecycle/result service and pre-execution claims. Added five regression cases for the consolidated pass. Gateway migration and live persistence verification remain pending.
+
+- Durable response construction: migrated response API, workflow/audit, stats and incident report lifecycle to the transactional runtime; retained plan-time incident snapshots for report recovery. Added live Postgres fresh-process/concurrency/audit tests for consolidated execution.
+
+- SOC durability construction: added Postgres incident snapshots, transactional event deduplication, multi-worker serialized correlation and response lifecycle projection; added live recovery/concurrency/closed-incident test cases for the consolidated pass.
+
+- Pipeline construction: replaced lossy Redis cursor relay with pending/acknowledgement/reclaim/quarantine handling; require indexing for durable ingestion and recover active alerts from stored incidents. Added relay and alert-recovery regression cases, not yet executed.
+
+- Added persistent shared detection state and replay-stable matches, cross-worker live-update fan-out, orderly background shutdown and dashboard snapshot recovery polling. New regression cases await consolidated execution.
+
+- Copilot construction: added append-only persistent query/tool/source/response audit, owner/admin read endpoint, hashed sensitive content and fail-closed audit availability. Added concurrency/privacy/failure regression cases for the consolidated pass.
+
+- Copilot construction: added persistent local lexical vector retrieval for historical incidents, strict read-only search tool, pre-generation retrieval, historical-only fact rendering and source citations. Added ranking/exclusion/privacy regression cases for the consolidated pass.
+
+- Response construction: added opt-in HTTP firewall adapter, strict matching confirmation, persistent-storage requirement and approval binding to execution mode/endpoint; mock-transport regression cases queued for consolidated verification.
+
+- Forensic construction: added verified browser ZIP database/WAL analysis and HAR cache metadata parser with bounded archives, member hashes and sensitive-field omission; dashboard selectors and regression cases added.
+
+- Forensic construction: added paired deleted-file recovery API/UI, same-case and partner/size validation, safe recovered names, unknown-time preservation and parent-hash custody provenance. Regression cases queued for consolidated verification.
+
+- SOC construction: added robust event-rate anomaly detector with data-driven thresholds, warm-up, persisted baseline, explained observations and bounded state; configuration API and regression cases added.

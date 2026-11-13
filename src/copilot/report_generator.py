@@ -143,7 +143,7 @@ class IncidentReportGenerator:
                 ContainmentRecommendation(
                     action_type="isolate_host",
                     target=target_host,
-                    rationale=f"Temporarily isolate host '{target_host}' to prevent lateral network pivoting.",
+                    rationale=f"If evidence confirms compromise of '{target_host}', assess impact and request approval for temporary isolation.",
                     requires_approval=True,
                     priority="high",
                 )
@@ -154,7 +154,7 @@ class IncidentReportGenerator:
                 ContainmentRecommendation(
                     action_type="revoke_credentials",
                     target=target_user,
-                    rationale=f"Rotate SSH keys and invalidate active sessions for targeted privileged account '{target_user}'.",
+                    rationale=f"If credential compromise is confirmed for '{target_user}', plan credential rotation and session revocation with analyst approval.",
                     requires_approval=True,
                     priority="high",
                 )

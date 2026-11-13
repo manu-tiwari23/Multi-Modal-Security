@@ -22,21 +22,35 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from opensearchpy import OpenSearch
 
 from src.shared.config import settings
+from src.api.auth import router as auth_router, authorize_request, require_analyst, bind_actor, COOKIE_NAME
+from src.incident_response.runtime import get_response_service
+from src.incident_response.repository import ResponseStoreUnavailable
+from src.incident_response.service import ResponseError
+from src.auth.models import AuthError, AuthStoreUnavailable, Principal
+from src.auth.runtime import get_auth_service
 from src.shared.event_schema import Entity, SecurityEvent
 from src.reporting import build_incident_report
 from src.reporting.threat import build_threat_report
 from src.api.reports import ReportFormat, report_response
 from src.api.forensics import create_forensics_router
+from src.api.threat_intel import router as threat_intel_router
+from src.threat_intel.runtime import get_threat_intel
 from src.forensics.runtime import get_evidence_vault
 from src.soc.detection.rule_loader import RuleLoader
 from src.soc.detection.matcher import DetectionEngine
+from src.soc.detection.durable import DurableDetectionEngine
+from src.soc.detection.anomaly import load_anomaly_config
+from src.shared.live_updates import LiveUpdates
 from src.soc.correlation.engine import CorrelationEngine
+from src.soc.correlation.durable import DurableCorrelationEngine
+from src.soc.correlation.repository import PostgresIncidentRepository, IncidentStoreUnavailable
 from src.soc.correlation.incident_model import Incident
 from src.soc.scoring.calculator import score_incident
 from src.soc.alerting.alert_model import Alert
@@ -51,7 +65,9 @@ from src.honeypot.normalizer import (
 )
 from src.honeypot.behavior import BehaviorAnalyzer
 import base64
+from src.copilot.history import PastIncidentRetriever, MemoryHistoryStore, PostgresHistoryStore
 from src.copilot.models import CopilotQuery
+from src.copilot.audit import get_copilot_audit, audit_query, finish_query, CopilotAuditUnavailable
 from src.copilot.retrieval import LogRetriever, IncidentRetriever, ThreatIntelRetriever
 from src.copilot.report_generator import IncidentReportGenerator
 from src.copilot.tools import ToolExecutor, OPENAI_TOOLS
@@ -61,28 +77,7 @@ from src.phishing.url_scanner import URLScanner
 from src.phishing.attachment_analyzer import AttachmentAnalyzer
 from src.phishing.explanation_generator import ExplanationGenerator
 from src.phishing.models import PhishingVerdict, ParsedEmail
-from src.incident_response import (
-    ActionExecutor,
-    ApprovalError,
-    ApprovalExpiredError,
-    ApprovalManager,
-    ApprovalNotFoundError,
-    ApprovalStatus,
-    IncidentNotTrackedError,
-    IncidentPhase,
-    IncidentStateTracker,
-    InvalidApprovalStateError,
-    InvalidApproverError,
-    InvalidStateTransitionError,
-    MockEDRBackend,
-    MockFirewallBackend,
-    MockWorkflowBackend,
-    NoBackendAvailableError,
-    ResponseAction,
-    ResponsePlan,
-    ResponseRecommender,
-    UnapprovedActionError,
-)
+from src.incident_response import ApprovalStatus, IncidentPhase, ResponseRecommender
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +88,19 @@ logger = logging.getLogger(__name__)
 RULES_DIR = Path(__file__).parent.parent / "soc" / "rules"
 rule_loader = RuleLoader(rules_dir=RULES_DIR)
 loaded_rules = rule_loader.load_from_directory()
-detection_engine = DetectionEngine(rules=loaded_rules)
-correlation_engine = CorrelationEngine(correlation_window_seconds=300)
+anomaly_config = load_anomaly_config()
+detection_engine = (DetectionEngine(rules=loaded_rules, anomaly_config=anomaly_config) if settings.incident_storage_mode == "memory" else
+    DurableDetectionEngine(loaded_rules, PostgresIncidentRepository(settings.postgres_url, settings.incident_db_schema, settings.storage_timeout_seconds), anomaly_config))
+def response_incident_statuses():
+    phases = {"new": "open", "investigating": "investigating", "containing": "investigating",
+              "contained": "contained", "remediating": "contained", "remediated": "resolved", "closed": "closed"}
+    return {record["incident_id"]: phases[record["state"]["phase"]]
+            for record in get_response_service().repository.list_records() if record["state"]}
+
+
+correlation_engine = (CorrelationEngine(correlation_window_seconds=300) if settings.incident_storage_mode == "memory"
+    else DurableCorrelationEngine(PostgresIncidentRepository(settings.postgres_url, settings.incident_db_schema,
+        settings.storage_timeout_seconds), status_provider=response_incident_statuses))
 alert_manager = AlertManager(min_score_to_alert=15.0)
 
 session_recorder = SessionRecorder()
@@ -108,9 +114,13 @@ MAX_BUFFER_SIZE = 500
 # AI Copilot Subsystem Initialization
 log_retriever = LogRetriever(opensearch_client=None, memory_buffer=RECENT_EVENTS_BUFFER)
 incident_retriever = IncidentRetriever(correlation_engine)
-threat_intel_retriever = ThreatIntelRetriever(honeypot_recorder=session_recorder)
+threat_intel_retriever = ThreatIntelRetriever(honeypot_recorder=session_recorder,
+    lookup=lambda value, kind=None: get_threat_intel().lookup(value, kind, allow_external=False).model_dump(mode="json"))
 report_generator = IncidentReportGenerator(incident_retriever, threat_intel_retriever)
-tool_executor = ToolExecutor(log_retriever, incident_retriever, threat_intel_retriever, report_generator)
+history_store = (MemoryHistoryStore() if settings.copilot_audit_mode == "memory" else
+    PostgresHistoryStore(settings.postgres_url, settings.copilot_audit_db_schema, settings.storage_timeout_seconds))
+history_retriever = PastIncidentRetriever(lambda: [incident.model_dump(mode="json") for incident in correlation_engine.list_incidents()], history_store)
+tool_executor = ToolExecutor(log_retriever, incident_retriever, threat_intel_retriever, report_generator, history_retriever)
 copilot_orchestrator = CopilotOrchestrator(tool_executor)
 
 # Phishing Detection Subsystem Initialization
@@ -130,17 +140,7 @@ phishing_stats = {
 
 # Incident Response Subsystem Initialization
 ir_recommender = ResponseRecommender()
-ir_approval_manager = ApprovalManager()
-ir_firewall_backend = MockFirewallBackend()
-ir_edr_backend = MockEDRBackend()
-ir_workflow_backend = MockWorkflowBackend()
-ir_executor = ActionExecutor(
-    approval_manager=ir_approval_manager,
-    backends=[ir_firewall_backend, ir_edr_backend, ir_workflow_backend],
-)
-ir_state_tracker = IncidentStateTracker()
-ir_plans: dict[str, ResponsePlan] = {}
-ir_actions: dict[str, ResponseAction] = {}
+
 
 
 # ---------------------------------------------------------------------------
@@ -169,8 +169,13 @@ class ConnectionManager:
         dead: list[WebSocket] = []
         for ws in self._connections:
             try:
+                await asyncio.to_thread(get_auth_service().authenticate, ws.cookies.get(COOKIE_NAME, ""), False)
                 await ws.send_text(message)
             except Exception:
+                try:
+                    await ws.close(code=1008)
+                except Exception:
+                    pass
                 dead.append(ws)
         for ws in dead:
             if ws in self._connections:
@@ -178,6 +183,7 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+_live_updates = None
 
 # ---------------------------------------------------------------------------
 # Central Event Ingestion Helper
@@ -187,6 +193,7 @@ manager = ConnectionManager()
 async def ingest_pipeline_event(event: SecurityEvent) -> dict[str, Any]:
     """Pass an event through detection, correlation, scoring, and alerting."""
     # 1. Buffer event in-memory
+    RECENT_EVENTS_BUFFER[:] = [item for item in RECENT_EVENTS_BUFFER if item.event_id != event.event_id]
     RECENT_EVENTS_BUFFER.insert(0, event)
     if len(RECENT_EVENTS_BUFFER) > MAX_BUFFER_SIZE:
         RECENT_EVENTS_BUFFER.pop()
@@ -202,7 +209,12 @@ async def ingest_pipeline_event(event: SecurityEvent) -> dict[str, Any]:
                 refresh=True,
             )
         except Exception as exc:
+            if settings.incident_storage_mode == "persistent":
+                raise HTTPException(503, "Event indexing unavailable; event remains pending for retry") from exc
             logger.debug("OpenSearch indexing skipped: %s", exc)
+
+    elif settings.incident_storage_mode == "persistent":
+        raise HTTPException(503, "Event indexing unavailable; event remains pending for retry")
 
     # 2. Evaluate detection rules
     matches = detection_engine.evaluate(event)
@@ -234,7 +246,10 @@ async def ingest_pipeline_event(event: SecurityEvent) -> dict[str, Any]:
             ),
         },
     }
-    await manager.broadcast(json.dumps(payload))
+    if _live_updates is not None:
+        await _live_updates.publish(payload)
+    else:
+        await manager.broadcast(json.dumps(payload))
 
     return {
         "event_id": event.event_id,
@@ -252,38 +267,8 @@ _relay_task: Optional[asyncio.Task] = None
 
 
 async def _redis_to_websocket_relay() -> None:
-    """Read new events from Redis Streams and broadcast to WebSockets if available."""
-    try:
-        import redis.asyncio as aioredis
-        r = aioredis.from_url(settings.redis_url, decode_responses=True)
-        last_id = "$"
-
-        logger.info("Redis -> WebSocket relay started")
-        while True:
-            try:
-                results = await r.xread(
-                    streams={"events:raw": last_id},
-                    count=20,
-                    block=2000,
-                )
-            except Exception:
-                await asyncio.sleep(2)
-                continue
-
-            if not results:
-                continue
-
-            for _stream, messages in results:
-                for message_id, fields in messages:
-                    last_id = message_id
-                    data = fields.get("data", "{}")
-                    try:
-                        ev = SecurityEvent.from_json(data)
-                        await ingest_pipeline_event(ev)
-                    except Exception:
-                        await manager.broadcast(data)
-    except Exception as exc:
-        logger.info("Redis not running or unreachable: %s (using in-memory pipeline)", exc)
+    from src.shared.stream_relay import run_gateway_relay
+    await run_gateway_relay(settings.redis_url, ingest_pipeline_event)
 
 
 # ---------------------------------------------------------------------------
@@ -293,12 +278,19 @@ async def _redis_to_websocket_relay() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start the Redis relay on startup, cancel it on shutdown."""
-    global _relay_task
+    """Run ingestion and cross-worker live fan-out with orderly shutdown."""
+    global _relay_task, _live_updates
+    _live_updates = LiveUpdates(settings.redis_url, manager.broadcast)
+    fanout_task = asyncio.create_task(_live_updates.listen())
     _relay_task = asyncio.create_task(_redis_to_websocket_relay())
-    yield
-    if _relay_task:
+    try:
+        yield
+    finally:
         _relay_task.cancel()
+        fanout_task.cancel()
+        await asyncio.gather(_relay_task, fanout_task, return_exceptions=True)
+        await _live_updates.close()
+        _live_updates = None
 
 
 # ---------------------------------------------------------------------------
@@ -310,15 +302,46 @@ app = FastAPI(
     version="0.3.0",
     description="Unified API Gateway for SOC, Honeypot, Correlation, and Risk Scoring.",
     lifespan=lifespan,
+    dependencies=[Depends(authorize_request)],
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.auth_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(AuthError)
+async def auth_error_handler(request, exc):
+    return JSONResponse(status_code=exc.status, content={"detail": str(exc)}, headers={"Cache-Control": "no-store"})
+
+
+@app.exception_handler(ResponseError)
+async def response_error_handler(request, exc):
+    return JSONResponse(status_code=exc.status, content={"detail": str(exc)})
+
+
+@app.exception_handler(ResponseStoreUnavailable)
+async def response_storage_error_handler(request, exc):
+    return JSONResponse(status_code=503, content={"detail": "Response storage unavailable. Execution may already be claimed; refresh its status before retrying."})
+
+
+@app.exception_handler(IncidentStoreUnavailable)
+async def incident_storage_error_handler(request, exc):
+    return JSONResponse(status_code=503, content={"detail": "Incident storage unavailable; correlation has not been acknowledged."})
+
+
+@app.exception_handler(CopilotAuditUnavailable)
+async def copilot_audit_error_handler(request, exc):
+    return JSONResponse(status_code=503, content={"detail": "Copilot audit storage unavailable; an audited answer cannot be returned."})
+
+
+@app.exception_handler(AuthStoreUnavailable)
+async def auth_storage_error_handler(request, exc):
+    return JSONResponse(status_code=503, content={"detail": "Authentication storage unavailable; retry later"})
 
 
 _os_client: Optional[OpenSearch] = None
@@ -355,11 +378,15 @@ def _get_os() -> Optional[OpenSearch]:
 
 
 app.include_router(create_forensics_router(get_evidence_vault, ingest_pipeline_event))
+app.include_router(threat_intel_router)
+app.include_router(auth_router)
 
 
 @app.get("/api/health")
 async def health():
     """Liveness check and service status."""
+    incidents = correlation_engine.active_incidents
+    alert_manager.synchronize(incidents)
     return {
         "status": "ok",
         "service": "mms-api-gateway",
@@ -434,6 +461,7 @@ async def get_events(
 @app.get("/api/alerts")
 async def get_alerts(priority: Optional[str] = None):
     """Get deduplicated, scored SOC alerts with full ScoreBreakdown and MITRE tags."""
+    alert_manager.synchronize(correlation_engine.active_incidents)
     alerts = alert_manager.get_all_alerts(sort_by_score=True)
     if priority:
         alerts = [a for a in alerts if a.priority == priority]
@@ -461,6 +489,7 @@ async def get_rules():
     return {
         "count": len(detection_engine.rules),
         "rules": [r.model_dump(mode="json") for r in detection_engine.rules],
+        "anomaly_detection": {**anomaly_config.model_dump(), "method": "Per-source/event-type/host bucket counts compared to prior median and scaled MAD; rate anomaly does not prove compromise."},
     }
 
 
@@ -624,12 +653,25 @@ async def simulate_attack(req: SimulationRequest):
 
 
 @app.post("/api/copilot/chat")
-async def copilot_chat(query: CopilotQuery):
+def copilot_chat(query: CopilotQuery, principal: Principal = Depends(require_analyst)):
     """Interact with the AI Security Copilot with RAG and OpenAI tool calling."""
     # Ensure log_retriever has current OpenSearch client connection
     log_retriever.os_client = _get_os()
-    resp = copilot_orchestrator.ask(query)
+    from uuid import uuid4
+    store = get_copilot_audit()
+    audit_id = str(uuid4())
+    with audit_query(store, audit_id, principal.username, query):
+        resp = copilot_orchestrator.ask(query)
+        finish_query(store, audit_id, principal.username, resp)
     return resp.model_dump(mode="json")
+
+
+@app.get("/api/copilot/audit/{audit_id}")
+def copilot_audit_record(audit_id: str, principal: Principal = Depends(authorize_request)):
+    entries = get_copilot_audit().read(audit_id)
+    if not entries or (principal.role != "admin" and entries[0]["actor"] != principal.username):
+        raise HTTPException(404, "Audit record not found")
+    return {"audit_id": audit_id, "entries": entries}
 
 
 @app.get("/api/copilot/tools")
@@ -648,10 +690,12 @@ def download_threat_report(format: ReportFormat = "json"):
 @app.get("/api/reports/incidents/{incident_id}")
 def download_incident_report(incident_id: str, format: ReportFormat = "json"):
     incident = correlation_engine.get_incident(incident_id)
-    if incident is None:
+    record = get_response_service().repository.get(incident_id)
+    snapshot = incident.model_dump(mode="json") if incident else (record or {}).get("incident_snapshot")
+    if snapshot is None:
         raise HTTPException(status_code=404, detail="Incident not found")
-    state = ir_state_tracker.get_incident_record(incident_id) if ir_state_tracker.is_tracked(incident_id) else None
-    return report_response(build_incident_report(incident.model_dump(mode="json"), state), format)
+    state = record["state"] if record else None
+    return report_response(build_incident_report(snapshot, state), format)
 
 
 class ReportRequest(BaseModel):
@@ -915,177 +959,86 @@ async def get_phishing_stats():
 
 
 class IRApprovalDecisionRequest(BaseModel):
-    analyst_id: str
+    analyst_id: str | None = None
     reason: str = ""
 
 
 class IRStateTransitionRequest(BaseModel):
     to_phase: IncidentPhase
-    actor: str = "analyst"
+    actor: str | None = None
     reason: str = ""
 
 
 @app.post("/api/ir/recommend/{incident_id}")
-async def ir_recommend(incident_id: str, incident_override: Optional[Incident] = None):
-    """Generate a response plan and pending approval requests for an incident."""
-    incident = incident_override or correlation_engine.get_incident(incident_id)
+def ir_recommend(incident_id: str, principal: Principal = Depends(require_analyst)):
+    incident = correlation_engine.get_incident(incident_id)
+    service = get_response_service()
     if incident is None:
-        raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found")
+        stored = service.repository.get(incident_id)
+        if stored and stored["plans"]:
+            return {"plan": next(iter(stored["plans"].values())), "approval_requests": service.list_approvals(incident_id)}
+        raise HTTPException(404, "Incident not found")
+    return service.add_plan(ir_recommender.recommend(incident), principal.username, incident.model_dump(mode="json"))
 
-    if not ir_state_tracker.is_tracked(incident.incident_id):
-        ir_state_tracker.register_incident(incident.incident_id, actor="system")
 
-    plan = ir_recommender.recommend(incident)
-    ir_plans[plan.plan_id] = plan
-    ir_state_tracker.link_plan(incident.incident_id, plan.plan_id)
-
-    approval_requests = []
-    for action in plan.actions:
-        ir_actions[action.action_id] = action
-        req = ir_approval_manager.request_approval(
-            action=action,
-            incident_id=incident.incident_id,
-            plan_id=plan.plan_id,
-        )
-        approval_requests.append(req.model_dump(mode="json"))
-
-    return {
-        "plan": plan.model_dump(mode="json"),
-        "approval_requests": approval_requests,
-    }
+@app.get("/api/ir/incidents/{incident_id}/workflow")
+def ir_incident_workflow(incident_id: str):
+    service = get_response_service()
+    workflow = service.workflow(incident_id)
+    if workflow is not None:
+        return workflow
+    if correlation_engine.get_incident(incident_id) is None:
+        raise HTTPException(404, "Incident not found")
+    return {"incident_id": incident_id, "execution_mode": service.mode,
+            "execution_notice": "Configured response backends are simulated; no real system is contained." if service.mode == "simulation" else "Approved IP-block actions use the configured firewall adapter. Unsupported actions are not simulated.",
+            "storage_mode": service.repository.mode, "state": None, "allowed_transitions": [], "actions": []}
 
 
 @app.get("/api/ir/approvals")
-async def ir_list_approvals(
-    incident_id: Optional[str] = Query(default=None),
-    status: Optional[ApprovalStatus] = Query(default=None),
-):
-    """List approval requests, optionally filtered by incident_id or status."""
-    ir_approval_manager.expire_stale()
-    reqs = ir_approval_manager.list_requests(incident_id=incident_id, status=status)
-    return {"approvals": [r.model_dump(mode="json") for r in reqs], "count": len(reqs)}
+def ir_list_approvals(incident_id: Optional[str] = Query(default=None), status: Optional[ApprovalStatus] = Query(default=None)):
+    requests = get_response_service().list_approvals(incident_id, status.value if status else None)
+    return {"approvals": requests, "count": len(requests)}
 
 
 @app.post("/api/ir/approvals/{request_id}/approve")
-async def ir_approve_request(request_id: str, body: IRApprovalDecisionRequest):
-    """Approve a pending containment/response action request."""
-    req = ir_approval_manager.get_request(request_id)
-    if req is None:
-        raise HTTPException(status_code=404, detail=f"Approval request '{request_id}' not found")
-    action = ir_actions.get(req.action_id)
-    try:
-        decision = ir_approval_manager.approve(
-            request_id=request_id,
-            analyst_id=body.analyst_id,
-            reason=body.reason,
-            action=action,
-        )
-    except InvalidApproverError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except ApprovalExpiredError as exc:
-        raise HTTPException(status_code=410, detail=str(exc))
-    except InvalidApprovalStateError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except ApprovalNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-
-    updated_req = ir_approval_manager.get_request(request_id)
-    return {
-        "decision": decision.model_dump(mode="json"),
-        "request": updated_req.model_dump(mode="json") if updated_req else None,
-    }
+def ir_approve_request(request_id: str, body: IRApprovalDecisionRequest, principal: Principal = Depends(require_analyst)):
+    return get_response_service().decide(request_id, True, bind_actor(body.analyst_id, principal), body.reason)
 
 
 @app.post("/api/ir/approvals/{request_id}/reject")
-async def ir_reject_request(request_id: str, body: IRApprovalDecisionRequest):
-    """Reject a pending containment/response action request."""
-    req = ir_approval_manager.get_request(request_id)
-    if req is None:
-        raise HTTPException(status_code=404, detail=f"Approval request '{request_id}' not found")
-    action = ir_actions.get(req.action_id)
-    try:
-        decision = ir_approval_manager.reject(
-            request_id=request_id,
-            analyst_id=body.analyst_id,
-            reason=body.reason,
-            action=action,
-        )
-    except InvalidApproverError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except ApprovalExpiredError as exc:
-        raise HTTPException(status_code=410, detail=str(exc))
-    except InvalidApprovalStateError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    except ApprovalNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-
-    updated_req = ir_approval_manager.get_request(request_id)
-    return {
-        "decision": decision.model_dump(mode="json"),
-        "request": updated_req.model_dump(mode="json") if updated_req else None,
-    }
+def ir_reject_request(request_id: str, body: IRApprovalDecisionRequest, principal: Principal = Depends(require_analyst)):
+    return get_response_service().decide(request_id, False, bind_actor(body.analyst_id, principal), body.reason)
 
 
 @app.post("/api/ir/execute/{action_id}")
-async def ir_execute_action(action_id: str):
-    """Execute an analyst-approved response action."""
-    action = ir_actions.get(action_id)
-    if action is None:
-        raise HTTPException(status_code=404, detail=f"Action '{action_id}' not found")
-
-    try:
-        result = ir_executor.execute(action)
-    except UnapprovedActionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
-    except NoBackendAvailableError as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
-
-    req = ir_approval_manager.get_request_for_action(action_id)
-    if req is not None and result.success:
-        ir_state_tracker.record_executed_action(req.incident_id, action_id)
-
-    return {"result": result.model_dump(mode="json"), "action_status": action.execution_status.value}
+def ir_execute_action(action_id: str, principal: Principal = Depends(require_analyst)):
+    return get_response_service().execute(action_id, principal.username)
 
 
 @app.get("/api/ir/incidents/{incident_id}/state")
-async def ir_get_incident_state(incident_id: str):
-    """Get lifecycle phase, linked plans, executed actions, and transition history."""
-    try:
-        return ir_state_tracker.get_incident_record(incident_id)
-    except IncidentNotTrackedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+def ir_get_incident_state(incident_id: str):
+    record = get_response_service().repository.get(incident_id)
+    if not record or record["state"] is None:
+        raise HTTPException(404, "Incident has no response plan")
+    return record["state"]
+
+
+@app.get("/api/ir/incidents/{incident_id}/audit")
+def ir_get_incident_audit(incident_id: str):
+    service = get_response_service()
+    if service.repository.get(incident_id) is None:
+        raise HTTPException(404, "Incident has no response plan")
+    return {"entries": service.repository.audit(incident_id)}
 
 
 @app.post("/api/ir/incidents/{incident_id}/transition")
-async def ir_transition_incident_state(incident_id: str, body: IRStateTransitionRequest):
-    """Transition an incident to a new IncidentPhase."""
-    try:
-        transition = ir_state_tracker.transition(
-            incident_id=incident_id,
-            to_phase=body.to_phase,
-            actor=body.actor,
-            reason=body.reason,
-        )
-    except IncidentNotTrackedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except InvalidStateTransitionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-
-    return {"transition": transition.model_dump(mode="json"), "phase": body.to_phase.value}
+def ir_transition_incident_state(incident_id: str, body: IRStateTransitionRequest, principal: Principal = Depends(require_analyst)):
+    return get_response_service().transition(incident_id, body.to_phase, bind_actor(body.actor, principal), body.reason)
 
 
 @app.get("/api/ir/stats")
-async def ir_stats():
-    """Return Incident Response subsystem metrics."""
-    pending = ir_approval_manager.list_pending()
-    return {
-        "incident_phases": ir_state_tracker.get_summary(),
-        "pending_approvals": len(pending),
-        "total_plans": len(ir_plans),
-        "blocked_ips": sorted(ir_firewall_backend.blocked_ips),
-        "isolated_hosts": sorted(ir_edr_backend.isolated_hosts),
-        "disabled_accounts": sorted(ir_edr_backend.disabled_accounts),
-    }
+def ir_stats():
+    return get_response_service().stats()
 
 
 # ---------------------------------------------------------------------------
@@ -1100,6 +1053,14 @@ async def websocket_events(ws: WebSocket):
     try:
         while True:
             # Keep connection open
-            await ws.receive_text()
+            try:
+                await asyncio.wait_for(ws.receive_text(), timeout=15)
+            except asyncio.TimeoutError:
+                pass
+            await asyncio.to_thread(get_auth_service().authenticate, ws.cookies.get(COOKIE_NAME, ""), False)
     except WebSocketDisconnect:
+        pass
+    except (AuthError, AuthStoreUnavailable):
+        await ws.close(code=1008)
+    finally:
         manager.disconnect(ws)

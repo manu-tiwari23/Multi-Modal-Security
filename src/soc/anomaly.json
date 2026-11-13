@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "bucket_seconds": 60,
+  "history_buckets": 30,
+  "warmup_buckets": 10,
+  "minimum_rate": 20,
+  "deviation_multiplier": 6,
+  "max_groups": 1000
+}

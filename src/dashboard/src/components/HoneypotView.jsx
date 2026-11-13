@@ -1,3 +1,4 @@
+import { apiFetch } from '../api.js'
 import React, { useState, useEffect, useCallback } from 'react'
 
 export default function HoneypotView() {
@@ -10,8 +11,8 @@ export default function HoneypotView() {
   const fetchData = useCallback(async () => {
     try {
       const [sessRes, atkRes] = await Promise.all([
-        fetch('/api/honeypot/sessions'),
-        fetch('/api/honeypot/attackers'),
+        apiFetch('/api/honeypot/sessions'),
+        apiFetch('/api/honeypot/attackers'),
       ])
       if (sessRes.ok) {
         const data = await sessRes.json()
@@ -280,3 +281,4 @@ export default function HoneypotView() {
     </div>
   )
 }
+

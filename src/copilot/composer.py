@@ -26,7 +26,7 @@ class ResponseComposer:
     def extract_citations_from_tools(tool_records: list[ToolCallRecord], tool_outputs: list[dict[str, Any]]) -> list[Citation]:
         """Extract ground-truth citations from tool execution records and output payloads."""
         citations: list[Citation] = []
-        seen_ids: set[str] = set()
+        seen_ids: set[tuple[str, str]] = set()
 
         for rec, out in zip(tool_records, tool_outputs):
             if not rec.success or not isinstance(out, dict):
@@ -36,10 +36,10 @@ class ResponseComposer:
 
             # 1. query_logs tool output
             if tool_name == "query_logs" and "events" in out:
-                for ev in out.get("events", [])[:5]:
+                for ev in out.get("events", []):
                     eid = ev.get("event_id", "")
-                    if eid and eid not in seen_ids:
-                        seen_ids.add(eid)
+                    if eid and ("event", eid) not in seen_ids:
+                        seen_ids.add(("event", eid))
                         entity = ev.get("entity", {})
                         ip_val = entity.get("ip", "N/A")
                         citations.append(
@@ -49,15 +49,15 @@ class ResponseComposer:
                                 title=f"Event {ev.get('event_type')} from {ev.get('source')}",
                                 snippet=f"Severity: {ev.get('severity')} | IP: {ip_val} | Time: {ev.get('timestamp')}",
                                 source=ev.get("source"),
-                                metadata={"raw": ev.get("raw")},
+                                metadata={},
                             )
                         )
 
             # 2. get_incident tool output
             elif tool_name == "get_incident" and "incident_id" in out:
                 inc_id = out.get("incident_id", "")
-                if inc_id and inc_id not in seen_ids:
-                    seen_ids.add(inc_id)
+                if inc_id and ("incident", inc_id) not in seen_ids:
+                    seen_ids.add(("incident", inc_id))
                     citations.append(
                         Citation(
                             id=inc_id,
@@ -72,14 +72,14 @@ class ResponseComposer:
             # 3. lookup_ioc tool output
             elif tool_name == "lookup_ioc" and "ioc" in out:
                 ioc = out.get("ioc", "")
-                if ioc and ioc not in seen_ids:
-                    seen_ids.add(ioc)
+                if ioc and ("ioc", ioc) not in seen_ids:
+                    seen_ids.add(("ioc", ioc))
                     citations.append(
                         Citation(
                             id=ioc,
                             type="ioc",
                             title=f"IOC {ioc} ({out.get('type')})",
-                            snippet=f"Classification: {out.get('classification')} | Threat Score: {out.get('threat_score')}/100",
+                            snippet=f"Classification: {out.get('classification')} | Threat Score: {str(out['threat_score']) + '/100' if out.get('threat_score') is not None else 'Unavailable'}",
                             source="threat_intel",
                             metadata=out,
                         )
@@ -88,8 +88,8 @@ class ResponseComposer:
             # 4. draft_report tool output
             elif tool_name == "draft_report" and "incident_id" in out:
                 inc_id = out.get("incident_id", "")
-                if inc_id and inc_id not in seen_ids:
-                    seen_ids.add(inc_id)
+                if inc_id and ("incident", inc_id) not in seen_ids:
+                    seen_ids.add(("incident", inc_id))
                     citations.append(
                         Citation(
                             id=inc_id,
@@ -99,6 +99,21 @@ class ResponseComposer:
                             source="report_generator",
                         )
                     )
+
+            # Include every returned timeline event and correlated incident.
+            if tool_name in ("get_incident", "draft_report"):
+                extra = out.get("timeline", out.get("attack_timeline", []))
+                if extra:
+                    nested = ResponseComposer.extract_citations_from_tools(
+                        [ToolCallRecord(tool_name="query_logs")], [{"events": extra}])
+                    citations.extend(c for c in nested if (c.type, c.id) not in seen_ids)
+                    seen_ids.update((c.type, c.id) for c in nested)
+            if tool_name in ("list_incidents", "run_correlation", "search_past_incidents"):
+                for incident in out.get("incidents", out.get("matched_incidents", [])):
+                    nested = ResponseComposer.extract_citations_from_tools(
+                        [ToolCallRecord(tool_name="get_incident")], [incident])
+                    citations.extend(c for c in nested if (c.type, c.id) not in seen_ids)
+                    seen_ids.update((c.type, c.id) for c in nested)
 
         return citations
 
@@ -114,7 +129,7 @@ class ResponseComposer:
                 ContainmentRecommendation(
                     action_type="block_ip",
                     target=ip,
-                    rationale=f"Observed malicious attack traffic / brute-force activity from IP {ip}.",
+                    rationale="Text suggests an IP block; validate source evidence and obtain analyst approval before acting.",
                     requires_approval=True,
                     priority="high",
                 )
@@ -127,7 +142,7 @@ class ResponseComposer:
                     ContainmentRecommendation(
                         action_type="isolate_host",
                         target=host,
-                        rationale=f"Host {host} exhibited privilege escalation or high-severity intrusion indicators.",
+                        rationale="Text suggests host isolation; validate source evidence and obtain analyst approval before acting.",
                         requires_approval=True,
                         priority="critical",
                     )
@@ -147,7 +162,13 @@ class ResponseComposer:
     ) -> CopilotResponse:
         """Compose the complete CopilotResponse object with citations and recommendations."""
         citations = cls.extract_citations_from_tools(tool_records, tool_outputs)
-        recommendations = cls.extract_recommendations(raw_answer)
+        # Arbitrary prose (including negated actions or quoted attacker commands)
+        # must never become actionable recommendations through regex extraction.
+        recommendations = []
+        for record, output in zip(tool_records, tool_outputs):
+            if record.success and record.tool_name == "draft_report":
+                recommendations.extend(ContainmentRecommendation.model_validate(action)
+                                       for action in output.get("containment_actions", []))
 
         # Enhance markdown with grounding footer if citations exist
         answer = raw_answer

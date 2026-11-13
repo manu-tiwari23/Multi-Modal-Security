@@ -4,6 +4,10 @@ Known issues tracker. Log a bug the moment you find one, even if you don't fix i
 
 ## Open
 
+- Report preparation finding (2026-11-13): dashboard activity charts substitute synthetic counts when the recent-event total is zero (`src/dashboard/src/components/OverviewView.jsx`, `makeActivityBuckets`). Do not use these curves as measured telemetry; remove the fallback or visibly label a demo mode before final dashboard acceptance. No software fix was attempted during report preparation.
+
+- Pipeline audit: old Redis cursor loss path replaced with consumer-group retries/reclaim/quarantine; verification pending. Multi-worker WebSocket fan-out and replay-stable shared detection are now implemented; live verification remains pending.
+
 | ID | Module | Description | Severity | Found | Notes |
 |---|---|---|---|---|---|
 | B006 | api/incident_response | Approval endpoints trust caller-provided analyst identity; no authenticated principal binds approval | High | 2026-11-12 | Completion gate: authenticated analyst workflow |
@@ -13,6 +17,9 @@ Known issues tracker. Log a bug the moment you find one, even if you don't fix i
 
 | ID | Module | Description | Severity | Found | Resolved | Fix Summary |
 |---|---|---|---|---|---|---|
+| B012 | copilot | Deterministic incident/honeypot answers invented attack stages and used a default example IP | High | 2026-11-13 | 2026-11-13 | Evidence-first local facts and validated model fact selection; missing indicator requests clarification; 71 mocked/unit/API checks pass |
+| B013 | copilot/intelligence | Mock reputation entries were presented as factual attribution, including an empty-file hash labeled malware | High | 2026-11-13 | 2026-11-13 | Removed fabricated database; provider-backed/cached or explicitly unknown results, no fabricated honeypot reputation score; 61 targeted checks pass |
+| B014 | forensics | Invalid browser timestamps were replaced with current time | Medium | 2026-11-13 | 2026-11-13 | Preserve unknown timestamps and omit undated records from timelines; workflow tests cover it |
 | B011 | api/tests | Event query `total` equaled page length; live API test assumed 20 pre-existing events | Medium | 2026-11-12 | 2026-11-12 | Correct total hits/count semantics for OpenSearch and memory; seed/clean a unique test index; six targeted checks pass |
 | B008 | forensics | Encoded command-marker detection silently failed due to `.encode()` on bytes | Medium | 2026-11-12 | 2026-11-12 | Compare bytes directly; inert positive/negative fixtures pass |
 | B009 | forensics | Callers could bypass hash verification; restoring bytes silently cleared prior tamper flags | High | 2026-11-12 | 2026-11-12 | Reject disabled verification, retain historical tamper state and block analysis pending reacquisition; regression tests pass |

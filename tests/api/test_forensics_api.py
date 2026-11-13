@@ -10,7 +10,7 @@ from src.forensics.evidence_vault import EvidenceVault
 
 
 @pytest.fixture
-def context():
+def context(authenticated_test_app):
     vault = EvidenceVault()
     events = []
 
@@ -18,7 +18,7 @@ def context():
         events.append(event)
         return {"event_id": event.event_id}
 
-    app = FastAPI()
+    app = authenticated_test_app(FastAPI())
     app.include_router(create_forensics_router(vault, ingest))
     return TestClient(app), vault, events
 
@@ -139,3 +139,31 @@ def test_carving_recovers_a_new_hashed_item_with_parent_provenance(context):
     assert vault.get_evidence_bytes(child["evidence_id"], "test") == b"%PDF-1.4\nSynthetic fixture\n%%EOF"
     assert vault.get_evidence_bytes(parent["evidence_id"], "test") == data
     assert client.post(f"/api/forensics/evidence/{parent['evidence_id']}/carve/-1").status_code == 404
+
+
+def test_download_is_verified_audited_and_forced_attachment(context):
+    client, vault, _ = context
+    item = upload(client, filename="collected evidence.log").json()
+    key = item["evidence_id"]
+    response = client.get(f"/api/forensics/evidence/{key}/download")
+    assert response.status_code == 200
+    assert response.content == b"Synthetic record 203.0.113.80"
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert "collected%20evidence.log" in response.headers["content-disposition"]
+    assert vault.get_chain_of_custody(key)[-1].action == "export"
+    vault.storage.store(f"{key}_collected evidence.log", b"changed")
+    assert client.get(f"/api/forensics/evidence/{key}/download").status_code == 409
+
+
+@pytest.mark.parametrize("kind,text", [
+    ("usb_setupapi", ">>>  [Device Install - USB\\VID_0781&PID_5583\\SERIAL123]\n>>>  Section start 2026/08/15 14:22:08.100\n<<<  [Exit status: SUCCESS]\n"),
+    ("usb_registry", 'Windows Registry Editor Version 5.00\n[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Enum\\USB\\VID_0951&PID_1666\\SERIAL123]\n"FriendlyName"="Kingston USB Storage"\n'),
+    ("usb_syslog", 'Aug 15 14:22:08 lab kernel: usb 1-1: New USB device found, idVendor=0781, idProduct=5583\nAug 15 14:22:09 lab kernel: usb 1-1: SerialNumber: SERIAL123\n'),
+])
+def test_usb_upload_analysis_workflows(context, kind, text):
+    client, vault, _ = context
+    item = upload(client, filename="usb.log", content_base64=base64.b64encode(text.encode()).decode()).json()
+    response = client.post(f"/api/forensics/evidence/{item['evidence_id']}/analyze?kind={kind}")
+    assert response.status_code == 200
+    assert response.json()["analysis"]["device_count"] >= 1
+    assert vault.get_chain_of_custody(item["evidence_id"])[-1].action == "analyze"

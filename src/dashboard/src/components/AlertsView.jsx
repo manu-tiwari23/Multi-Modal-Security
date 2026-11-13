@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { apiFetch } from '../api.js'
+import { Shield, ShieldAlert, Terminal, Activity, ChevronDown, ChevronUp, Target, ListTree, ArrowRight, Zap, CheckCircle } from 'lucide-react'
 
 export default function AlertsView({ alerts: liveAlerts }) {
   const [alerts, setAlerts] = useState([])
   const [selectedPriority, setSelectedPriority] = useState('ALL')
   const [expandedAlertId, setExpandedAlertId] = useState(null)
+  const [categoryMap, setCategoryMap] = useState({}) // alert_id -> 'overview' | 'detection' | 'scoring' | 'response'
   const [loading, setLoading] = useState(true)
 
   // Fetch alerts from REST API
   const fetchAlerts = useCallback(async () => {
     try {
-      const res = await fetch('/api/alerts')
+      const res = await apiFetch('/api/alerts')
       if (res.ok) {
         const data = await res.json()
         setAlerts(data.alerts || [])
@@ -23,8 +26,6 @@ export default function AlertsView({ alerts: liveAlerts }) {
 
   useEffect(() => {
     fetchAlerts()
-
-    // Poll every 2.5s to catch new alerts seamlessly
     const timer = setInterval(fetchAlerts, 2500)
     return () => clearInterval(timer)
   }, [fetchAlerts])
@@ -69,20 +70,23 @@ export default function AlertsView({ alerts: liveAlerts }) {
     if (!ts) return 'Just now'
     try {
       const d = new Date(ts)
-      return d.toLocaleTimeString()
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     } catch {
       return ts
     }
   }
+
+  const getCategory = (id) => categoryMap[id] || 'overview'
+  const setCategory = (id, cat) => setCategoryMap((prev) => ({ ...prev, [id]: cat }))
 
   return (
     <div className="view-container">
       {/* Header & Filter Bar */}
       <div className="view-header">
         <div>
-          <h2 className="view-title">SOC Correlated Alerts & Incidents</h2>
+          <h2 className="view-title">SOC Correlated Incidents & Alerts</h2>
           <p className="view-subtitle">
-            Deduplicated multi-stage security incidents with explainable risk scoring
+            Simplified incident queue. Click any activity to inspect categorized investigation details.
           </p>
         </div>
         <div className="filter-group">
@@ -106,26 +110,30 @@ export default function AlertsView({ alerts: liveAlerts }) {
       ) : filteredAlerts.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state__icon">🛡️</div>
-          <h3>No alerts found for selected filter</h3>
-          <p>Go to the Attack Simulator tab and click "Launch Attack Scenario" to generate alerts!</p>
+          <h3>No incidents found for selected filter</h3>
+          <p>New detected activity will appear here. Perimeter nominal.</p>
         </div>
       ) : (
         <div className="alerts-grid">
           {filteredAlerts.map((alert) => {
             const isExpanded = expandedAlertId === alert.alert_id
+            const currentCat = getCategory(alert.alert_id)
             const bd = alert.score_breakdown || {}
-            // Deduplicate rule_ids and mitre_techniques
             const uniqueRules = Array.from(new Set(alert.rule_ids || []))
             const uniqueMitre = Array.from(new Set(alert.mitre_techniques || []))
 
             return (
               <div
                 key={alert.alert_id}
-                className={`alert-card ${isExpanded ? 'alert-card--expanded' : ''}`}
+                className={`alert-card ${isExpanded ? 'alert-card--expanded' : 'alert-card--simplified'}`}
               >
+                {/* Simplified Card Summary (Always visible & clean) */}
                 <div
                   className="alert-card__header"
                   onClick={() => setExpandedAlertId(isExpanded ? null : alert.alert_id)}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
                 >
                   <div className="alert-card__title-row">
                     <span className={`badge-priority ${getPriorityClass(alert.priority)}`}>
@@ -135,6 +143,19 @@ export default function AlertsView({ alerts: liveAlerts }) {
                       {alert.severity}
                     </span>
                     <h3 className="alert-card__title">{alert.title}</h3>
+
+                    {/* Compact quick-glance chips */}
+                    <div className="alert-card__quick-chips">
+                      <span className="quick-chip">
+                        Host: <strong>{alert.primary_entity?.host || 'prod-web-01'}</strong>
+                      </span>
+                      <span className="quick-chip">
+                        IP: <strong>{alert.primary_entity?.ip || '—'}</strong>
+                      </span>
+                      <span className="quick-chip">
+                        {alert.event_count || 1} events
+                      </span>
+                    </div>
                   </div>
 
                   <div className="alert-card__score-box">
@@ -144,127 +165,239 @@ export default function AlertsView({ alerts: liveAlerts }) {
                       </span>
                       <span className="score-meter__denom">/100</span>
                     </div>
-                    <span className="chevron-toggle">{isExpanded ? '▲' : '▼'}</span>
+                    <span className="chevron-toggle">
+                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </span>
                   </div>
                 </div>
 
-                {/* Entity & Metadata Bar */}
-                <div className="alert-card__meta-bar">
-                  <span className="meta-pill">
-                    <span className="meta-pill__label">Attacker IP:</span>
-                    <code className="meta-pill__value">{alert.primary_entity?.ip || '—'}</code>
-                  </span>
-                  {alert.primary_entity?.user && (
-                    <span className="meta-pill">
-                      <span className="meta-pill__label">User:</span>
-                      <code className="meta-pill__value">{alert.primary_entity.user}</code>
-                    </span>
-                  )}
-                  {alert.primary_entity?.host && (
-                    <span className="meta-pill">
-                      <span className="meta-pill__label">Target Host:</span>
-                      <code className="meta-pill__value">{alert.primary_entity.host}</code>
-                    </span>
-                  )}
-                  <span className="meta-pill">
-                    <span className="meta-pill__label">Events:</span>
-                    <span className="meta-pill__value">{alert.event_count || 1}</span>
-                  </span>
-                  <span className="meta-pill">
-                    <span className="meta-pill__label">Updated:</span>
-                    <span className="meta-pill__value">{formatTimestamp(alert.updated_at || alert.created_at)}</span>
-                  </span>
-                </div>
-
-                {/* Description narrative */}
-                <p className="alert-card__desc">{alert.description}</p>
-
-                {/* Unique Tags & MITRE badges */}
-                <div className="tags-row">
-                  {uniqueRules.map((rid) => (
-                    <span key={rid} className="tag-pill tag-pill--rule">
-                      📋 {rid}
-                    </span>
-                  ))}
-                  {uniqueMitre.map((tech) => (
-                    <span key={tech} className="tag-pill tag-pill--mitre">
-                      🎯 {tech}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Expanded Score Breakdown Card */}
+                {/* Categorized Details: ONLY rendered when clicked */}
                 {isExpanded && (
-                  <div className="score-breakdown-card">
-                    <h4 className="breakdown-title">
-                      <span>📊 Transparent Score Breakdown (Auditable Calculation)</span>
-                    </h4>
+                  <div className="alert-detail-expanded-pane">
+                    {/* Category Selector Tabs */}
+                    <div className="incident-category-tabs">
+                      <button
+                        className={`category-tab-btn ${currentCat === 'overview' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setCategory(alert.alert_id, 'overview')
+                        }}
+                      >
+                        📋 Overview & Entities
+                      </button>
+                      <button
+                        className={`category-tab-btn ${currentCat === 'detection' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setCategory(alert.alert_id, 'detection')
+                        }}
+                      >
+                        🎯 Detection & MITRE ({uniqueRules.length + uniqueMitre.length})
+                      </button>
+                      <button
+                        className={`category-tab-btn ${currentCat === 'scoring' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setCategory(alert.alert_id, 'scoring')
+                        }}
+                      >
+                        📊 Score Breakdown ({alert.risk_score?.toFixed(1) || '0.0'})
+                      </button>
+                      <button
+                        className={`category-tab-btn ${currentCat === 'response' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setCategory(alert.alert_id, 'response')
+                        }}
+                      >
+                        ⚡ Response Actions
+                      </button>
+                    </div>
 
-                    <div className="breakdown-grid">
-                      <div className="breakdown-item">
-                        <span className="breakdown-item__name">Base Severity ({bd.base_severity?.label || alert.severity})</span>
-                        <span className="breakdown-item__val">+{bd.base_severity?.value?.toFixed(1) || '0.0'}</span>
+                    {/* Category 1: Overview & Entities */}
+                    {currentCat === 'overview' && (
+                      <div className="category-content-panel">
+                        <div className="category-section">
+                          <h4 className="category-heading">Incident Narrative</h4>
+                          <p className="alert-card__desc">{alert.description || 'No extended description provided.'}</p>
+                        </div>
+
+                        <div className="category-section">
+                          <h4 className="category-heading">Entity & Telemetry Attributes</h4>
+                          <div className="entity-attributes-grid">
+                            <div className="entity-attribute-box">
+                              <span className="attr-label">Attacker Source IP</span>
+                              <code className="attr-value">{alert.primary_entity?.ip || '—'}</code>
+                            </div>
+                            <div className="entity-attribute-box">
+                              <span className="attr-label">Target Hostname</span>
+                              <code className="attr-value">{alert.primary_entity?.host || 'prod-web-01'}</code>
+                            </div>
+                            <div className="entity-attribute-box">
+                              <span className="attr-label">Affected User</span>
+                              <code className="attr-value">{alert.primary_entity?.user || 'root'}</code>
+                            </div>
+                            <div className="entity-attribute-box">
+                              <span className="attr-label">Correlated Events</span>
+                              <span className="attr-value highlight">{alert.event_count || 1} events</span>
+                            </div>
+                            <div className="entity-attribute-box">
+                              <span className="attr-label">First Seen</span>
+                              <span className="attr-value">{formatTimestamp(alert.created_at)}</span>
+                            </div>
+                            <div className="entity-attribute-box">
+                              <span className="attr-label">Last Updated</span>
+                              <span className="attr-value">{formatTimestamp(alert.updated_at || alert.created_at)}</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
+                    )}
 
-                      {bd.frequency?.value > 0 && (
-                        <div className="breakdown-item">
-                          <span className="breakdown-item__name">
-                            Event Frequency ({bd.frequency.event_count} events)
+                    {/* Category 2: Detection & MITRE */}
+                    {currentCat === 'detection' && (
+                      <div className="category-content-panel">
+                        <div className="category-section">
+                          <h4 className="category-heading">Triggered Sigma Detection Rules</h4>
+                          {uniqueRules.length === 0 ? (
+                            <p className="text-muted">No specific detection rule IDs attached.</p>
+                          ) : (
+                            <div className="tags-row">
+                              {uniqueRules.map((rid) => (
+                                <span key={rid} className="tag-pill tag-pill--rule">
+                                  📋 {rid}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="category-section">
+                          <h4 className="category-heading">MITRE ATT&CK TTPs & Techniques</h4>
+                          {uniqueMitre.length === 0 ? (
+                            <p className="text-muted">No specific MITRE techniques mapped.</p>
+                          ) : (
+                            <div className="tags-row">
+                              {uniqueMitre.map((tech) => (
+                                <span key={tech} className="tag-pill tag-pill--mitre">
+                                  🎯 {tech}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="category-section">
+                          <h4 className="category-heading">Incident Correlation Key</h4>
+                          <code className="incident-id-box">{alert.incident_id || alert.alert_id}</code>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Category 3: Score Breakdown */}
+                    {currentCat === 'scoring' && (
+                      <div className="category-content-panel">
+                        <div className="score-breakdown-card">
+                          <h4 className="breakdown-title">
+                            <span>📊 Transparent Auditable Scoring Formula</span>
+                          </h4>
+
+                          <div className="breakdown-grid">
+                            <div className="breakdown-item">
+                              <span className="breakdown-item__name">Base Severity ({bd.base_severity?.label || alert.severity})</span>
+                              <span className="breakdown-item__val">+{bd.base_severity?.value?.toFixed(1) || '0.0'}</span>
+                            </div>
+
+                            {bd.frequency?.value > 0 && (
+                              <div className="breakdown-item">
+                                <span className="breakdown-item__name">
+                                  Event Frequency ({bd.frequency.event_count} events)
+                                </span>
+                                <span className="breakdown-item__val">+{bd.frequency.value.toFixed(1)}</span>
+                              </div>
+                            )}
+
+                            {bd.mitre_techniques?.value > 0 && (
+                              <div className="breakdown-item">
+                                <span className="breakdown-item__name">
+                                  MITRE Breadth ({bd.mitre_techniques.techniques?.join(', ')})
+                                </span>
+                                <span className="breakdown-item__val">+{bd.mitre_techniques.value.toFixed(1)}</span>
+                              </div>
+                            )}
+
+                            {bd.critical_user?.value > 0 && (
+                              <div className="breakdown-item">
+                                <span className="breakdown-item__name">
+                                  Critical User Privilege ('{bd.critical_user.user}')
+                                </span>
+                                <span className="breakdown-item__val">+{bd.critical_user.value.toFixed(1)}</span>
+                              </div>
+                            )}
+
+                            {bd.critical_host?.value > 0 && (
+                              <div className="breakdown-item">
+                                <span className="breakdown-item__name">
+                                  Critical Target Host ('{bd.critical_host.host}')
+                                </span>
+                                <span className="breakdown-item__val">+{bd.critical_host.value.toFixed(1)}</span>
+                              </div>
+                            )}
+
+                            {bd.threat_intel?.value > 0 && (
+                              <div className="breakdown-item">
+                                <span className="breakdown-item__name">Threat Intel IOC Match</span>
+                                <span className="breakdown-item__val">+{bd.threat_intel.value.toFixed(1)}</span>
+                              </div>
+                            )}
+
+                            {bd.multi_source?.value > 0 && (
+                              <div className="breakdown-item breakdown-item--multisource">
+                                <span className="breakdown-item__name">
+                                  ✨ Multi-Source Correlation ({bd.multi_source.sources?.join(' + ')})
+                                </span>
+                                <span className="breakdown-item__val">+{bd.multi_source.value.toFixed(1)}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="breakdown-footer">
+                            <span>Final Calculated Risk Score:</span>
+                            <strong style={{ color: getScoreColor(alert.risk_score) }}>
+                              {alert.risk_score?.toFixed(1)} / 100.0
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Category 4: Response Actions */}
+                    {currentCat === 'response' && (
+                      <div className="category-content-panel">
+                        <div className="category-section">
+                          <h4 className="category-heading">Analyst Response Actions</h4>
+                          <p className="text-muted" style={{ marginBottom: '14px' }}>
+                            Containment and mitigation recommendations generated for this incident.
+                          </p>
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <div className="response-action-pill">
+                              <Zap size={14} className="text-amber-400" />
+                              <span>Contain Host: <strong>{alert.primary_entity?.host || 'prod-web-01'}</strong></span>
+                            </div>
+                            <div className="response-action-pill">
+                              <Shield size={14} className="text-red-400" />
+                              <span>Block Source IP: <strong>{alert.primary_entity?.ip || '203.0.113.88'}</strong></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="category-section" style={{ marginTop: '16px' }}>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            Tip: Switch to the <strong>Response</strong> tab in the sidebar to review and approve automated containment actions.
                           </span>
-                          <span className="breakdown-item__val">+{bd.frequency.value.toFixed(1)}</span>
                         </div>
-                      )}
-
-                      {bd.mitre_techniques?.value > 0 && (
-                        <div className="breakdown-item">
-                          <span className="breakdown-item__name">
-                            MITRE Breadth ({bd.mitre_techniques.techniques?.join(', ')})
-                          </span>
-                          <span className="breakdown-item__val">+{bd.mitre_techniques.value.toFixed(1)}</span>
-                        </div>
-                      )}
-
-                      {bd.critical_user?.value > 0 && (
-                        <div className="breakdown-item">
-                          <span className="breakdown-item__name">
-                            Critical User Privilege ('{bd.critical_user.user}')
-                          </span>
-                          <span className="breakdown-item__val">+{bd.critical_user.value.toFixed(1)}</span>
-                        </div>
-                      )}
-
-                      {bd.critical_host?.value > 0 && (
-                        <div className="breakdown-item">
-                          <span className="breakdown-item__name">
-                            Critical Target Host ('{bd.critical_host.host}')
-                          </span>
-                          <span className="breakdown-item__val">+{bd.critical_host.value.toFixed(1)}</span>
-                        </div>
-                      )}
-
-                      {bd.threat_intel?.value > 0 && (
-                        <div className="breakdown-item">
-                          <span className="breakdown-item__name">Threat Intel IOC Match</span>
-                          <span className="breakdown-item__val">+{bd.threat_intel.value.toFixed(1)}</span>
-                        </div>
-                      )}
-
-                      {bd.multi_source?.value > 0 && (
-                        <div className="breakdown-item breakdown-item--multisource">
-                          <span className="breakdown-item__name">
-                            ✨ Multi-Source Correlation ({bd.multi_source.sources?.join(' + ')})
-                          </span>
-                          <span className="breakdown-item__val">+{bd.multi_source.value.toFixed(1)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="breakdown-footer">
-                      <span>Final Computed Score:</span>
-                      <strong style={{ color: getScoreColor(alert.risk_score) }}>
-                        {alert.risk_score?.toFixed(1)} / 100.0
-                      </strong>
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

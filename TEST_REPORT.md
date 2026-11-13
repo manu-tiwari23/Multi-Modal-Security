@@ -4,6 +4,41 @@ Log of test results, one entry per feature, added *before* checking it off in `T
 
 ## Log
 
+### Academic report artifact verification (2026-11-13)
+
+- Report-only QA: final Word document rendered using installed Microsoft Word PDF export and the packaged render_docx.py rasterizer through a task-local conversion bridge (LibreOffice unavailable). Source/final render diff and visual page review completed; final length 43 pages. Confirmed 13 embedded/report figure assets plus the retained college logo, 11 separate editable SVG diagrams, five native tables, three refreshed contents/list fields, sequential page numbers and source page geometry.
+- Structural/content/font/package checks passed: template hash unchanged; preserve-only original package parts remain byte-identical; title/heading/body typography and author identities checked; no field errors, blank pages or text outside margins. QA scripts/results are retained in the Report folder's `_mms_work` directory.
+- These are document checks. No application test suite, live AI/provider request, new firewall action or hardware test was run to prepare the report. Historical software test counts in the report remain explicitly dated and do not certify subsequent work.
+
+### Software completion audit runs (2026-11-13)
+
+- Corrected real-session/auth persistence suite: **24 passed** (36.93s), covering real API login/CSRF/origins, roles, actor binding, no arbitrary-incident override, forensic custody identity, WebSocket login/revocation, outages, password hashing/expiry/revocation, last-admin protection, and live Postgres recovery/audit/throttling.
+- Browser QA on an isolated memory-backed preview with synthetic accounts and all paid/external providers disabled: invalid password error, analyst sign-in, live WebSocket connection, authenticated local Copilot request, reload session restoration, logout and viewer-only navigation all verified. Sign-in form checked at 390×844 with no horizontal overflow; desktop/mobile screenshots inspected. Preview uses no production accounts or evidence.
+
+- Authentication rerun with live PostgreSQL: **23 passed, 1 failed** (38.51s). Live session recovery/revocation, immutable auth audit and concurrent throttling passed. Remaining failure is the new test's transition actor field name; checking the actual schema. Frontend production build **passed** (27 modules, 407ms).
+
+- First real authentication tests: **20 passed, 2 failed** (35.34s). Failures were new test assumptions: approval decisions expose a different actor field, and the forensic runtime uses a locked singleton rather than `lru_cache`. Correcting fixtures/assertions before rerun; no live AI calls.
+
+- Authentication wiring baseline: **54 passed** (13.67s), existing API and forensic-storage feature tests with explicit test principals. This checks compatibility only; real-session authorization tests and sign-in UI verification are still in progress.
+
+- Combined regression after Copilot changes: **618 passed, zero skipped/deselected** (15.57s), including live infrastructure/persistence tests and mocked AI/provider tests. `git diff --check` passed (only Windows line-ending notices). No paid AI or live threat-provider queries.
+
+- Completed Copilot grounding/budget regression: **71 passed** (2.87s). Added actual OpenAI SDK serialization over a mock HTTP transport, elapsed-time cutoff, nonexistent-incident isolation, linked-entity correlation, bounded context/redaction notices, authoritative empty OpenSearch results, all returned event citations, typed-ID deduplication, no action extraction from negated prose, and API role/local-mode validation. No paid requests.
+
+- Copilot grounding/budget first regression: **62 passed** (2.94s). Local incident/honeypot facts, UUID/indicator selection, strict argument/history validation, mocked evidence-first OpenAI calls, source selection rejection, tool round trips, rate/concurrency/context/request limits, sanitized failure fallback and containment allowlist. No paid requests.
+
+- Combined regression after forensic workflows and standalone intelligence: **576 passed, zero skipped/deselected** (15.26s), including live Redis/OpenSearch, forensic Postgres/MinIO recovery, and intelligence-cache tests. Added malformed numeric-host, empty-userinfo and scoped-IPv6 URL rejection. External provider/AI calls mocked or disabled.
+
+- Recovered infrastructure: all four Compose data services healthy; no previous pytest process remained. Durable threat-intelligence cache rerun: **1 passed** (0.48s), verifying retrieval from a new service instance and expiry against live PostgreSQL with a synthetic provider.
+
+- Threat intelligence/Copilot/API: **61 passed** (3.13s), provider endpoints via mock transports (no live external requests), input normalization, private/synthetic indicator exclusion, opt-in/caching/coalescing, provider outages/rate limits/redirects, unknown states, API and cached Copilot evidence. Removed fabricated local reputation records.
+- First durable reputation-cache check: **4 passed, 1 skipped** (5.53s); live Postgres connection was unavailable, so persistence is not yet verified. Rechecking infrastructure before rerun.
+
+- Completed forensic workflows (including download and positive USB API cases): **36 passed** (1.99s). Verified metadata/browser parsing, size/entity/row limits, malformed inputs, unknown timestamps, no host-path reads, case/item integrity APIs, derived evidence provenance and audited download refusal after tampering.
+
+- Initial parser workflow regression: **23 passed** (4.03s), covering existing browser, forensic API and report tests after API adapters.
+- New parser/API/browser checks first run: **31 passed, 2 setup errors** (4.63s). The large parameter value produced an oversized test identifier; added concise explicit parameter IDs. Corrected run: **32 passed** (3.16s), including metadata bounds, browser schema/rows/timestamps, input/path isolation, integrity and carving tests.
+
 ### Software completion audit runs (2026-11-12)
 
 - Durable forensic storage regression: **83 passed** (4.22s), existing forensic, report and API tests after repository/MinIO wiring.

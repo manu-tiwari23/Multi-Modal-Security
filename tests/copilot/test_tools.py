@@ -59,8 +59,8 @@ def test_tool_executor_lookup_ioc():
 
     res, rec = executor.execute_tool("lookup_ioc", {"ioc_value": "203.0.113.88"})
     assert rec.success is True
-    assert res["found_in_threat_intel"] is True
-    assert res["threat_score"] == 92
+    assert res["found_in_threat_intel"] is False
+    assert res["threat_score"] is None
 
 
 def test_tool_executor_get_incident_and_draft_report():

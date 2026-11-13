@@ -60,6 +60,9 @@ def api_client(vault):
     async def ingest(event):
         return {"event_id": event.event_id}
     app = FastAPI()
+    from src.api.auth import authorize_request
+    from src.auth.models import Principal
+    app.dependency_overrides[authorize_request] = lambda: Principal(username="analyst", role="admin")
     app.include_router(create_forensics_router(vault, ingest))
     return TestClient(app)
 

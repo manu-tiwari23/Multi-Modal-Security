@@ -51,7 +51,7 @@ def test_storage_outage_is_not_reported_as_evidence_tampering(monkeypatch):
     assert item.is_tampered is False
 
 
-def test_api_recovers_from_lazy_initialization_failure_without_memory_fallback():
+def test_api_recovers_from_lazy_initialization_failure_without_memory_fallback(authenticated_test_app):
     attempts = []
     vault = EvidenceVault()
     def provider():
@@ -61,7 +61,7 @@ def test_api_recovers_from_lazy_initialization_failure_without_memory_fallback()
         return vault
     async def ingest(event):
         return {}
-    app = FastAPI()
+    app = authenticated_test_app(FastAPI())
     app.include_router(create_forensics_router(provider, ingest))
     client = TestClient(app)
     first = client.get("/api/forensics/evidence")

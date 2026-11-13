@@ -13,6 +13,7 @@ license = {text = "MIT"}
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
+    "authentication: exercises real authorization without test principal overrides",
     "integration: tests that require running Docker services (Redis, OpenSearch, etc.)",
 ]
 
