@@ -79,6 +79,8 @@ class PostgresResponseRepository:
                 with self._lock:
                     if not self._ready:
                         self._initialize(cursor)
+                        connection.commit()
+                        self._ready = True
                 yield cursor
             self._ready = True
         except psycopg2.Error as exc:

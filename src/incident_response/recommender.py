@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import uuid
 from typing import Any
 
 from src.incident_response.models import (
@@ -649,6 +650,8 @@ class ResponseRecommender:
         for action in actions:
             # Deep copy to avoid mutating playbook templates
             a = action.model_copy(deep=True)
+            # Template identifiers must never identify executable actions across incidents.
+            a.action_id = str(uuid.uuid4())
 
             if not a.target_entity:
                 target: dict[str, str] = {}

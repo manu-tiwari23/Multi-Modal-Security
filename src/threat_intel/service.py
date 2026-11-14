@@ -38,7 +38,11 @@ class ThreatIntelService:
                 self._cache_retry_after = time.monotonic() + 30
         results = []
         for provider in self.providers:
-            if not allow_external:
+            if indicator.type not in getattr(provider, "supported_types", {indicator.type}):
+                continue
+            if getattr(provider, "local", False):
+                result = provider.lookup(indicator)
+            elif not allow_external:
                 result = ProviderResult(provider=provider.name, status="not_requested", explanation="External lookup was not requested; only cached reputation is available")
             elif not indicator.external_eligible:
                 result = ProviderResult(provider=provider.name, status="unsupported", explanation="Private/reserved/test indicators are kept local")
@@ -50,6 +54,8 @@ class ThreatIntelService:
         now = datetime.now(timezone.utc)
         result = LookupResult(indicator=indicator, classification=verdict, score=max(scores) if scores else None,
                               providers=results, checked_at=now, cache_status=cache_status)
+        if any(r.details.get("synthetic") and r.status == "ok" for r in results):
+            result.limitations.insert(0, "This is a synthetic Simulation Lab result, not observed or external threat intelligence.")
         # Do not cache configuration failures as reputation, or an offline lookup
         # that would suppress a later explicitly requested provider lookup.
         if any(r.status in ("ok", "not_found") for r in results):

@@ -14,13 +14,23 @@ import CopilotView from './components/CopilotView.jsx'
 import AlertsView from './components/AlertsView.jsx'
 import HoneypotView from './components/HoneypotView.jsx'
 import EventFeed from './components/EventFeed.jsx'
-import RulesView from './components/RulesView.jsx'
 import SimulatorView from './components/SimulatorView.jsx'
 
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/events/live`
+const DEMO_NODES_KEY = 'mms-demo-topology-nodes-v1'
+
+function loadDemoNodes() {
+  try {
+    const value = JSON.parse(localStorage.getItem(DEMO_NODES_KEY) || '[]')
+    return Array.isArray(value) ? value.filter((node) => node?.id && node?.host && node?.ip).slice(0, 50) : []
+  } catch {
+    return []
+  }
+}
 
 export default function App({ user }) {
   const [activeTab, setActiveTab] = useState('overview')
+  const [responseIncident, setResponseIncident] = useState('')
   const [copilotOpen, setCopilotOpen] = useState(false)
   const copilotDialog = useRef(null)
   useEffect(() => {
@@ -30,6 +40,7 @@ export default function App({ user }) {
   const [events, setEvents] = useState([])
   const [liveAlerts, setLiveAlerts] = useState([])
   const [connected, setConnected] = useState(false)
+  const [demoNodes, setDemoNodes] = useState(loadDemoNodes)
   const [pipelineStats, setPipelineStats] = useState({
     active_alerts: 0,
     active_incidents: 0,
@@ -39,6 +50,10 @@ export default function App({ user }) {
 
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
+
+  useEffect(() => {
+    localStorage.setItem(DEMO_NODES_KEY, JSON.stringify(demoNodes))
+  }, [demoNodes])
 
   // Fetch health and pipeline stats
   const fetchStats = useCallback(async () => {
@@ -158,30 +173,32 @@ export default function App({ user }) {
             pipelineStats={pipelineStats}
             events={events}
             liveAlerts={liveAlerts}
+            customNodes={demoNodes}
+            onCustomNodesChange={setDemoNodes}
             onNavigate={(tab) => setActiveTab(tab)}
             onCopilot={() => setCopilotOpen(true)}
             canUseCopilot={user?.role !== 'viewer'}
             onRefresh={() => {
-              fetchStats()
-              fetchInitial()
+              return fetchInitial()
             }}
           />
         )}
         {activeTab === 'phishing' && <PhishingView role={user?.role} />}
         {activeTab === 'forensics' && <ForensicsView user={user} />}
         {activeTab === 'account' && <AccountView user={user} />}
-        {activeTab === 'response' && <ResponseView user={user} />}
+        {activeTab === 'response' && <ResponseView user={user} initialIncident={responseIncident} />}
         {activeTab === 'reports' && <ReportsView />}
         {activeTab === 'intelligence' && <IntelligenceView role={user?.role} />}
-        {activeTab === 'alerts' && <AlertsView alerts={liveAlerts} />}
+        {activeTab === 'alerts' && <AlertsView alerts={liveAlerts} onRespond={id => { setResponseIncident(id); setActiveTab('response') }} />}
         {activeTab === 'honeypot' && <HoneypotView />}
         {activeTab === 'events' && <EventFeed events={events} />}
-        {activeTab === 'rules' && <RulesView />}
         {activeTab === 'simulator' && (
           <SimulatorView
+            onNavigate={(tab) => setActiveTab(tab)}
+            events={events}
+            liveAlerts={liveAlerts}
             onSimulationSuccess={() => {
-              fetchStats()
-              fetchInitial()
+              return fetchInitial()
             }}
           />
         )}

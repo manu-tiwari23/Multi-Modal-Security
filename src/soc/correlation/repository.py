@@ -40,6 +40,9 @@ class PostgresIncidentRepository:
                         cursor.execute(sql.SQL("CREATE TABLE IF NOT EXISTS {} (incident_id TEXT PRIMARY KEY, updated_at TIMESTAMPTZ NOT NULL, snapshot JSONB NOT NULL)").format(self.table("mms_incidents")))
                         cursor.execute(sql.SQL("CREATE INDEX IF NOT EXISTS mms_incidents_updated_idx ON {}(updated_at)").format(self.table("mms_incidents")))
                         cursor.execute(sql.SQL("CREATE TABLE IF NOT EXISTS {} (event_id TEXT PRIMARY KEY, incident_id TEXT REFERENCES {}(incident_id), recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW())").format(self.table("mms_correlated_events"), self.table("mms_incidents")))
+                        # Release DDL locks before acquiring correlation locks.
+                        connection.commit()
+                        self._ready = True
                 yield cursor
             self._ready = True
         except psycopg2.Error as exc:

@@ -2,12 +2,22 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '../api.js'
 import { Shield, ShieldAlert, Terminal, Activity, ChevronDown, ChevronUp, Target, ListTree, ArrowRight, Zap, CheckCircle } from 'lucide-react'
 
-export default function AlertsView({ alerts: liveAlerts }) {
+export default function AlertsView({ alerts: liveAlerts, onRespond }) {
   const [alerts, setAlerts] = useState([])
   const [selectedPriority, setSelectedPriority] = useState('ALL')
   const [expandedAlertId, setExpandedAlertId] = useState(null)
   const [categoryMap, setCategoryMap] = useState({}) // alert_id -> 'overview' | 'detection' | 'scoring' | 'response'
   const [loading, setLoading] = useState(true)
+  const [copyStatus, setCopyStatus] = useState({})
+
+  async function copyIncidentId(alert) {
+    try {
+      await navigator.clipboard.writeText(alert.incident_id)
+      setCopyStatus(prev => ({ ...prev, [alert.alert_id]: 'Copied!' }))
+    } catch {
+      setCopyStatus(prev => ({ ...prev, [alert.alert_id]: 'Copy failed. Select the ID and copy manually.' }))
+    }
+  }
 
   // Fetch alerts from REST API
   const fetchAlerts = useCallback(async () => {
@@ -111,7 +121,7 @@ export default function AlertsView({ alerts: liveAlerts }) {
         <div className="empty-state">
           <div className="empty-state__icon">🛡️</div>
           <h3>No incidents found for selected filter</h3>
-          <p>New detected activity will appear here. Perimeter nominal.</p>
+          <p>No active alerts are present in the current snapshot.</p>
         </div>
       ) : (
         <div className="alerts-grid">
@@ -147,7 +157,7 @@ export default function AlertsView({ alerts: liveAlerts }) {
                     {/* Compact quick-glance chips */}
                     <div className="alert-card__quick-chips">
                       <span className="quick-chip">
-                        Host: <strong>{alert.primary_entity?.host || 'prod-web-01'}</strong>
+                        Host: <strong>{alert.primary_entity?.host || 'Unknown'}</strong>
                       </span>
                       <span className="quick-chip">
                         IP: <strong>{alert.primary_entity?.ip || '—'}</strong>
@@ -169,6 +179,13 @@ export default function AlertsView({ alerts: liveAlerts }) {
                       {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </span>
                   </div>
+                </div>
+
+                <div className="incident-id-row">
+                  <span>Incident ID</span>
+                  <code>{alert.incident_id || 'Unavailable'}</code>
+                  <button type="button" disabled={!alert.incident_id} onClick={() => copyIncidentId(alert)} aria-label={`Copy incident ID ${alert.incident_id || ''}`}>Copy ID</button>
+                  <span role="status">{copyStatus[alert.alert_id] || ''}</span>
                 </div>
 
                 {/* Categorized Details: ONLY rendered when clicked */}
@@ -231,7 +248,7 @@ export default function AlertsView({ alerts: liveAlerts }) {
                             </div>
                             <div className="entity-attribute-box">
                               <span className="attr-label">Target Hostname</span>
-                              <code className="attr-value">{alert.primary_entity?.host || 'prod-web-01'}</code>
+                              <code className="attr-value">{alert.primary_entity?.host || 'Unknown'}</code>
                             </div>
                             <div className="entity-attribute-box">
                               <span className="attr-label">Affected User</span>
@@ -289,7 +306,7 @@ export default function AlertsView({ alerts: liveAlerts }) {
 
                         <div className="category-section">
                           <h4 className="category-heading">Incident Correlation Key</h4>
-                          <code className="incident-id-box">{alert.incident_id || alert.alert_id}</code>
+                          <code className="incident-id-box">{alert.incident_id || 'Unavailable'}</code>
                         </div>
                       </div>
                     )}
@@ -376,25 +393,8 @@ export default function AlertsView({ alerts: liveAlerts }) {
                       <div className="category-content-panel">
                         <div className="category-section">
                           <h4 className="category-heading">Analyst Response Actions</h4>
-                          <p className="text-muted" style={{ marginBottom: '14px' }}>
-                            Containment and mitigation recommendations generated for this incident.
-                          </p>
-                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                            <div className="response-action-pill">
-                              <Zap size={14} className="text-amber-400" />
-                              <span>Contain Host: <strong>{alert.primary_entity?.host || 'prod-web-01'}</strong></span>
-                            </div>
-                            <div className="response-action-pill">
-                              <Shield size={14} className="text-red-400" />
-                              <span>Block Source IP: <strong>{alert.primary_entity?.ip || '203.0.113.88'}</strong></span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="category-section" style={{ marginTop: '16px' }}>
-                          <span style={{ fontSize: '11px', color: '#64748b' }}>
-                            Tip: Switch to the <strong>Response</strong> tab in the sidebar to review and approve automated containment actions.
-                          </span>
+                          <p className="text-muted">Review an evidence-based plan before approving any action. Execution always requires a separate analyst decision.</p>
+                          <button className="globe-btn" style={{ marginTop: 16 }} onClick={() => onRespond(alert.incident_id)}>Open response workflow →</button>
                         </div>
                       </div>
                     )}

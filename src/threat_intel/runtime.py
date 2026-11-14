@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from src.shared.config import settings
 from .cache import MemoryCache, PostgresCache
-from .providers import AbuseIPDBProvider, VirusTotalProvider
+from .providers import AbuseIPDBProvider, DemoDatasetProvider, VirusTotalProvider
 from .service import ThreatIntelService
 
 
@@ -13,6 +13,7 @@ def get_threat_intel():
              if settings.threat_intel_cache_mode == "persistent"
              else MemoryCache(settings.threat_intel_cache_capacity))
     return ThreatIntelService(providers=[
+        DemoDatasetProvider(),
         VirusTotalProvider(settings.vt_api_key, settings.threat_intel_timeout_seconds),
         AbuseIPDBProvider(settings.abuseipdb_api_key, settings.threat_intel_timeout_seconds),
     ], cache=cache, ttl_seconds=settings.threat_intel_cache_ttl_seconds)

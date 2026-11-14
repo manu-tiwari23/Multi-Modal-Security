@@ -10,6 +10,42 @@ import httpx
 from .models import Indicator, ProviderResult
 
 
+class DemoDatasetProvider:
+    """Local synthetic reputation used only by the documented Simulation Lab indicators."""
+
+    name = "mms_demo_dataset"
+    local = True
+    api_key = ""
+    _records = {
+        ("ip", "203.0.113.88"): (86, "Full platform showcase source"),
+        ("domain", "account-verification.example.test"): (78, "Lookalike-domain demonstration"),
+        ("url", "http://secure-login.example.test/verify/account?session=demo"): (92, "Credential-lure URL demonstration"),
+        ("hash", "f36f9731c93cebe6dd00be680e7049d69261100c9e5ff00fe110752b6fbd9694"): (72, "Inert attachment demonstration"),
+    }
+
+    def lookup(self, indicator: Indicator):
+        record = self._records.get((indicator.type, indicator.value))
+        if record is None:
+            return ProviderResult(
+                provider=self.name,
+                status="unsupported",
+                explanation="Indicator is not part of the local Simulation Lab demo dataset",
+                details={"synthetic": True, "dataset": "simulation_lab"},
+            )
+        score, scenario = record
+        return ProviderResult(
+            provider=self.name,
+            status="ok",
+            classification="flagged",
+            score=score,
+            explanation=(
+                f"Synthetic MMS demo record: {scenario}. This score exists only to demonstrate the "
+                "intelligence workflow and is not external reputation or proof of compromise."
+            ),
+            details={"synthetic": True, "dataset": "simulation_lab", "scenario": scenario},
+        )
+
+
 class HTTPProvider:
     name = "provider"
 
@@ -70,6 +106,7 @@ class VirusTotalProvider(HTTPProvider):
 
 class AbuseIPDBProvider(HTTPProvider):
     name = "abuseipdb"
+    supported_types = {"ip"}
 
     def lookup(self, indicator: Indicator):
         if indicator.type != "ip":

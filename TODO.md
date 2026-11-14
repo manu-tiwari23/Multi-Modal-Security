@@ -4,28 +4,31 @@ Single source of truth for build progress. Update this every time a feature star
 
 ## Currently Working On
 
-**Documentation delivery (2026-11-13):** Prepared the academic MMS report for Manu Tiwari and Mayank Shakya using the supplied new college template, with separate generated concepts and editable diagram assets. Report artifacts are under `C:\Users\manut\OneDrive - Gamers Flight\Desktop\Report\MMS_Final_Report`. This documentation work did not implement or verify the pending software features; the software goal and resume notes below remain active. Existing software work remains uncommitted.
+**Incident ID display/copy implemented (2026-11-14):** Always-visible selectable incident ID and Copy ID control on incident cards, plus accessible clipboard feedback. Build passes; browser clipboard verification pending. Changes remain uncommitted.
 
-**Active goal — Complete and verify all software features; rebuild the dashboard.**
+**Phishing demo section added (2026-11-14):** Simulation Lab now offers direct email loading, URL analysis handoff and campaign launch. Email opens in Raw email mode using the existing inert .eml asset. Build and 11 API tests pass; browser interaction check remains pending. Changes uncommitted.
 
-**Currently implementing:** Connected network systems 3D globe visualization completed. Removed continent dot shapes; the 3D globe now models network infrastructure where each dot corresponds to an active connected system/host (1 system = 1 dot, 2 systems = 2 dots, N systems = N dots). Per-system threat status is displayed directly on the nodes (Green = normal/healthy, Orange = mild warning/medium activity, Red = active attack with pulsing beacons, HUD leader tags, and local shockwaves). Added inter-system mesh links with traversing data packets and a node selector in the HUD. Production build verified cleanly.
+**AbuseIPDB applicability fixed (2026-11-14):** Non-IP lookups skip the IP-only provider; dashboard explains applicability and handles older cached unsupported cards. IPv4/IPv6 mocked routing verified; 49 tests and dashboard build pass. Live key validation not performed.
 
-**Resume notes:** Modernized Overview (`OverviewView.jsx`), realistic 3D threat globe (`GlobeOverview.jsx`), and charts (`recharts`, `lucide-react`) are active and verified. Both Vite dev server (port 5173) and FastAPI backend (port 8000) are operational.
+**Provider configuration prepared (2026-11-14):** Added blank VT_API_KEY and ABUSEIPDB_API_KEY to ignored local .env; existing provider runtime already reads both. 44 focused service/API tests pass. User must supply keys and restart backend; live provider verification awaits keys.
 
-ESP32 is deferred by user request (2026-11-12). Copilot remains on `gpt-4o-mini`; automated tests must use offline or mocked responses without spending API credits.
+**Overview graph follow-up completed (2026-11-14):** Removed the shared max-width constraint collapsing Recharts wrappers, replacing the earlier lab-only workaround. Production build and visual check of the actual Overview component with synthetic events pass. Changes remain uncommitted with existing user work.
 
-**Completion plan (user update):** Implement remaining software and the simple globe dashboard first; then run one consolidated verification pass and fix observed issues. Avoid repeated full-suite runs during construction. Homepage should stay uncluttered, with attack markers and Copilot in a corner; detailed workflows belong on separate pages. ESP32 remains deferred and paid AI testing remains disabled. See `COMPLETION_AUDIT.md` for outstanding requirements.
+**Simulation Lab chart rendering fixed (2026-11-14):** Recent activity and Severity Breakdown now render at their full measured width after opening the initially hidden Simulation Lab view. Production build and authenticated visual browser QA pass; both graph SVGs report non-zero dimensions and are visibly populated.
 
-**Latest resume note:** Added configurable robust event-rate anomaly detection alongside Sigma rules. `src/soc/anomaly.json` defines warm-up, bucket/history sizes, minimum rate, MAD multiplier and group cap. API loads it; persistent detection state now includes baseline counters/config digest. Rule results include observed count/baseline/threshold and caveats; `/api/rules` exposes configuration. Three synthetic regression cases written, not run. Next: isolated honeypot deployment/intake and dashboard refinement, then consolidated verification and fixes. All changes uncommitted.
+**Persistent demo topology and Simulation Lab telemetry completed (2026-11-14):** Demo globe nodes now retain their reserved IPs and persist across tab changes/reloads. Adding a node publishes a clearly synthetic low-severity event into the real telemetry pipeline. Simulation Lab now contains live Recent activity, Severity Breakdown, source totals including Phishing, and a recent demo-event stream. Its four bundled indicators resolve through an explicitly synthetic local intelligence dataset with non-external demo scores; ordinary unlisted indicators remain unknown. Production build, 55 focused tests and authenticated browser workflows pass.
 
-Previous milestone: **Phase 7 — Incident Response: implemented with simulated execution backends; full integration audit pending.**
+**Windows startup guide repaired (2026-11-14):** `HOW_TO_RUN.md` now reflects the persistent authenticated runtime: start and health-check Docker services before the API, use `.venv312` Python directly, create the first account, verify `/api/health`, handle a stale port 8000 process, launch Vite from the dashboard directory, and authenticate protected simulation requests. Reproduced the former 503 state with Docker stopped, then verified the corrected sequence returns HTTP 200.
 
-- [x] Response recommender (`src/incident_response/models.py`, `src/incident_response/recommender.py`) — Tested (46 unit tests, 417/417 total passing)
-- [x] Approval workflow (`src/incident_response/approval.py`) — Tested (21 unit tests, 438/438 total passing)
-- [x] Action executor (`src/incident_response/executor.py`) — Tested (14 unit tests, 452/452 total passing)
-- [x] Incident state tracking (`src/incident_response/state_tracker.py`, `src/api/main.py` `/api/ir/*`) — Tested (11 unit/E2E tests + 2 API tests, 465/465 total passing)
+**Simulation Lab showcase completed (2026-11-14):** Rebuilt the lab as a guided presentation workspace with five safe scenarios, visible pipeline stages/results, one-click links into the related workflows, and a downloadable demo-data kit containing reserved IP/domain/URL indicators plus inert email, attachment, log and presenter-guide files. Removed the standalone Detection Rules page from dashboard navigation/rendering; detection remains active in the backend and incident evidence. Production build, asset delivery, focused API tests and authenticated browser execution passed.
 
-**Next:** Complete remaining dashboard workflows and durable incident/response state, then remaining integration repairs and consolidated verification.
+**Dashboard completion checkpoint (2026-11-14):** Dashboard refinement and browser workflow verification are complete. The globe preserves the connected-system visualization while distinguishing observed systems from clearly labelled simulated layout nodes. Fabricated empty-state metrics, placeholder hosts/IPs, service-health claims and Copilot quick prompts were removed. Telemetry cards now remain readable at tablet/mobile widths, incident cards open the selected response workflow directly, and Copilot remains read-only with one non-duplicated citation drawer.
+
+Current consolidated verification: **689 tests passed, zero failures/skips** in 110.18 seconds, including the newly uploaded ESP32 notifier tests and live Redis/OpenSearch/Postgres/MinIO integration. The production dashboard build passes. Browser checks cover analyst sign-in, simulation/live counters, incident details, response-plan creation and approval gating, phishing URL analysis, local intelligence, forensics empty state, honeypot session inspection, telemetry expansion, report download and offline evidence-grounded Copilot.
+
+**Currently working on next:** Audit and verify the uploaded ESP32 firmware/hardware path. Firmware, notifier service, circuit documentation and flashing utilities are present. Server-side notifier tests pass; physical LED/buzzer/acknowledgement checks still require explicit verification before Phase 9 is marked complete.
+
+**Resume notes:** Current changes remain uncommitted and include user work. Dashboard remains on port 5173; the port-8000 API used for Simulation Lab browser QA was an isolated memory-auth session and should not be treated as a production service. Copilot automated checks use offline/mocked providers; live firewall execution was not exercised and remains approval-gated simulation by default. Current full-suite log: `data/verification-dashboard-final.log`.
 
 ---
 
@@ -87,13 +90,13 @@ Work top to bottom. Do not start a module's later features before its earlier on
 - [x] Forensic report generator — verified evidence, hashes/custody/indicators, JSON/HTML/Markdown; supporting upload/analyze API. Gateway durability subsequently verified with live restart/concurrency tests.
 - [x] Threat analysis report generator — deduplicated telemetry counts, source/technique/entity provenance, explicit coverage and reputation limits; 21 reporting/API tests passed
 
-### Phase 9 — Physical Alert System (ESP32) — DEFERRED by user request
-- [ ] Alert Notifier Service (subscribes to critical/high alerts, publishes to MQTT)
-- [ ] Mosquitto broker set up with auth
-- [ ] ESP32 firmware: Wi-Fi connect + MQTT subscribe
-- [ ] LED behavior per severity level
-- [ ] Buzzer behavior for high/critical
-- [ ] Acknowledge button → publish ack → mute buzzer
+### Phase 9 — Physical Alert System (ESP32)
+- [x] Alert Notifier Service (subscribes to critical/high alerts, publishes sanitized metadata to MQTT)
+- [x] Mosquitto broker configuration (docker-compose & local config)
+- [x] ESP32 firmware: Wi-Fi auto-reconnect + MQTT subscribe & compile verified
+- [x] LED behavior per severity level (GPIO 18 Green, GPIO 19 Yellow, GPIO 21 Red)
+- [x] Buzzer behavior for high/critical (GPIO 22 active buzzer)
+- [x] Acknowledge button → publish ack → mute buzzer (GPIO 23 push button to GND)
 
 ### Phase 10 — Dashboard Polish
 - [ ] Full alert/incident views

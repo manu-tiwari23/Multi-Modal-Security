@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { fileBase64, requestJSON } from '../workflows.js'
 
 function Verdict({ verdict }) {
@@ -27,6 +27,20 @@ export default function PhishingView({ role }) {
   const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [demoLoaded, setDemoLoaded] = useState(false)
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('mms-demo-artifact') || 'null')
+      if (saved?.destination === 'phishing' && saved.value) {
+        setMode(saved.type === 'email' ? 'email' : 'url')
+        setText(saved.value)
+        setDemoLoaded(true)
+        sessionStorage.removeItem('mms-demo-artifact')
+      }
+    } catch {
+      sessionStorage.removeItem('mms-demo-artifact')
+    }
+  }, [])
   async function scan(event) {
     event.preventDefault(); setBusy(true); setError(''); setResult(null)
     try {
@@ -44,6 +58,7 @@ export default function PhishingView({ role }) {
   }
   return <section className="tool-page">
     <header><p className="eyebrow">PHISHING DETECTION</p><h1>Inspect suspicious content</h1><p>Review detection signals from URLs, raw emails and static attachment analysis.</p></header>
+    {demoLoaded && <p className="tool-notice">Demo content loaded from the Simulation Lab. It uses reserved <code>.test</code> domains. Select Analyze content to see the detection signals.</p>}
     {role === 'viewer' ? <p className="tool-notice">An analyst role is required to run scans.</p> : <form className="tool-card" onSubmit={scan}>
       <label htmlFor="scan-mode">Analysis</label>
       <select id="scan-mode" value={mode} disabled={busy} onChange={e => { setMode(e.target.value); setText(''); setFile(null); setResult(null); setError('') }}>

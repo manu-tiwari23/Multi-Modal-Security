@@ -3,6 +3,7 @@ import pytest
 
 import src.api.main as api
 from src.threat_intel.models import ProviderResult
+from src.threat_intel.providers import DemoDatasetProvider
 from src.threat_intel.runtime import get_threat_intel
 from src.threat_intel.service import ThreatIntelService
 
@@ -49,3 +50,19 @@ def test_copilot_uses_cached_provider_evidence_without_external_request(context)
     assert result["providers"][0]["explanation"] == "Mock provider evidence"
     assert result["found_in_threat_intel"] is True
     assert provider.calls == 1
+
+
+def test_api_returns_labeled_demo_intelligence_for_simulation_indicator(context):
+    client, _, original_service = context
+    demo_service = ThreatIntelService([DemoDatasetProvider()])
+    api.app.dependency_overrides[get_threat_intel] = lambda: demo_service
+    try:
+        response = client.post("/api/threat-intel/lookup", json={"value": "203.0.113.88"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["classification"] == "flagged"
+        assert data["score"] == 86
+        assert data["providers"][0]["details"]["synthetic"] is True
+        assert "not observed or external" in data["limitations"][0]
+    finally:
+        api.app.dependency_overrides[get_threat_intel] = lambda: original_service

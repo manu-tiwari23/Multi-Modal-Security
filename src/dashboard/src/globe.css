@@ -215,10 +215,28 @@
   box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
 }
 
+.sector-pill.sec-demo {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: rgba(12, 35, 49, 0.8);
+  color: #7dd3fc;
+}
+
 .sector-pill strong {
   font-size: 10px;
   letter-spacing: 0.05em;
   color: #f8fafc;
+}
+
+.sector-pill__identity {
+  display: grid;
+  gap: 1px;
+}
+
+.sector-pill__identity code {
+  color: #91a4af;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0;
 }
 
 .sector-pill small {
@@ -715,3 +733,54 @@
   transform: translateX(0);
 }
 
+/* Keep controls outside the canvas: readable at desktop and mobile widths. */
+.globe-overview { display: grid; grid-template-columns: minmax(0, 1fr) 240px; min-height: 0; border-radius: 14px; box-shadow: none; }
+.globe-heading { position: relative; inset: auto; grid-column: 1 / -1; padding: 22px 24px 0; }
+.globe-heading h2 { font-size: 22px; }
+.globe-hud-overlay { position: relative; inset: auto; grid-column: 2; grid-row: 2; padding: 24px 20px 24px 0; align-items: stretch; justify-content: center; min-width: 0; }
+.globe-overview canvas { grid-column: 1; grid-row: 2; height: 350px; min-width: 0; }
+.sector-defense-matrix { max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; align-items: stretch; }
+.sector-pill { flex-wrap: wrap; justify-content: flex-start; min-width: 0; }
+.sector-pill strong { overflow-wrap: anywhere; }
+.globe-actions { flex-direction: column; }
+.globe-live-ticker { position: relative; inset: auto; grid-column: 1 / -1; max-width: none; border-radius: 0; border-width: 1px 0 0; padding: 12px 24px; background: #0c1620; }
+.globe-live-ticker .ticker-val { white-space: normal; line-height: 1.6; }
+.metric-cards-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ops-metric-card { padding: 16px; border-radius: 10px; }
+.ops-metric-card::before { display: none; }
+.card-value { font-variant-numeric: tabular-nums; }
+.card-bottom { line-height: 1.5; }
+.ops-dashboard-wrapper { gap: 20px; }
+.analyst-toolbar { background: none; border: 0; padding: 0; gap: 8px; }
+.chart-card, .card-list-box { min-width: 0; }
+.chart-card { overflow: hidden; }
+.charts-section-grid { min-width: 0; overflow: hidden; }
+.recharts-responsive-container { max-width: 100%; min-width: 0; }
+/* Recharts sizes this wrapper in pixels inside a deliberately zero-width
+   measurement element. max-width:100% here collapses every chart to zero. */
+.recharts-wrapper { min-width: 0; }
+.recharts-wrapper > svg { max-width: 100%; }
+.chart-header { flex-wrap: wrap; gap: 12px; }
+.ops-eyebrow .pulse-led { display: none; }
+@media (min-width: 851px) { .workspace-sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; gap: 24px; } }
+@media (max-width: 1100px) { .metric-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 650px) {
+  .globe-overview { grid-template-columns: minmax(0, 1fr); }
+  .globe-heading { padding: 20px 16px 0; }
+  .globe-eyebrow { font-size: 9px; letter-spacing: .1em; }
+  .globe-overview canvas { grid-column: 1; grid-row: 2; height: 280px; }
+  .globe-hud-overlay { grid-column: 1; grid-row: 3; padding: 0 16px 16px; }
+  .sector-defense-matrix { max-height: 130px; }
+  .globe-actions { flex-direction: row; flex-wrap: wrap; }
+  .globe-live-ticker { padding: 12px 16px; }
+  .metric-cards-grid { gap: 8px; }
+  .ops-metric-card { padding: 12px; }
+  .card-label { font-size: 10px; letter-spacing: .03em; }
+  .card-icon-wrap { display: none; }
+  .card-value { font-size: 26px; }
+  .activity-feed-section { grid-template-columns: minmax(0, 1fr); }
+  .chart-card { padding: 16px; }
+  .toolbar-label { display: none; }
+  .ops-header-controls { width: 100%; justify-content: space-between; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

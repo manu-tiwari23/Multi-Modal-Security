@@ -2,9 +2,12 @@ import EventCard from './EventCard.jsx'
 
 export default function EventFeed({ events }) {
   return (
-    <section id="event-feed">
+    <section id="event-feed" aria-labelledby="event-feed-title">
       <div className="feed__header">
-        <h2 className="feed__title">Event Stream</h2>
+        <div>
+          <p className="eyebrow">TELEMETRY</p>
+          <h2 id="event-feed-title" className="feed__title">Event stream</h2>
+        </div>
         <span className="feed__count">
           {events.length} event{events.length !== 1 ? 's' : ''}
         </span>

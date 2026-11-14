@@ -8,6 +8,7 @@ export default function IntelligenceView({ role }) {
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [demoLoaded, setDemoLoaded] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
     apiFetch('/api/threat-intel/status', { signal: controller.signal }).then(async response => {
@@ -15,6 +16,18 @@ export default function IntelligenceView({ role }) {
       setProviders((await response.json()).providers)
     }).catch(e => { if (e.name !== 'AbortError') setError(e.message) })
     return () => controller.abort()
+  }, [])
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('mms-demo-artifact') || 'null')
+      if (saved?.destination === 'intelligence' && saved.value) {
+        setValue(saved.value)
+        setDemoLoaded(true)
+        sessionStorage.removeItem('mms-demo-artifact')
+      }
+    } catch {
+      sessionStorage.removeItem('mms-demo-artifact')
+    }
   }, [])
   async function lookup(event) {
     event.preventDefault()
@@ -30,9 +43,11 @@ export default function IntelligenceView({ role }) {
     } catch (e) { setError(e.message || 'Lookup unavailable. Please retry.') }
     finally { setBusy(false) }
   }
+  const syntheticDemoResult = result?.providers?.some(provider => provider.details?.synthetic && provider.status === 'ok')
   return <section className="tool-page">
     <header><p className="eyebrow">THREAT INTELLIGENCE</p><h1>Investigate an indicator</h1><p>Check an IP address, domain, URL or file hash against retained intelligence.</p></header>
-    <div className="provider-status">{providers === null ? 'Loading provider status…' : providers.map(p => <span key={p.name}>{p.name} · {p.configured ? 'configured' : 'not configured'}</span>)}</div>
+    {demoLoaded && <p className="tool-notice">Demo indicator loaded from the Simulation Lab. External provider lookup remains disabled.</p>}
+    <div className="provider-status">{providers === null ? 'Loading provider status…' : providers.map(p => <span key={p.name}>{p.name} · {p.local ? 'local demo data' : p.configured ? 'configured' : 'not configured'}</span>)}</div>
     {role === 'viewer' ? <p className="tool-notice">An analyst role is required to run indicator lookups.</p> :
       <form className="tool-card" onSubmit={lookup}>
         <label htmlFor="intel-value">Indicator</label>
@@ -46,9 +61,11 @@ export default function IntelligenceView({ role }) {
       {result && <article className="tool-card intelligence-result">
         <p className="eyebrow">{result.indicator.type} · {result.cached ? 'CACHED RESULT' : 'LOOKUP RESULT'}</p>
         <h2>{result.indicator.value}</h2>
-        <p className="result-verdict">{result.classification.replaceAll('_', ' ')} · {result.score === null ? 'Score unavailable' : `Provider score ${result.score}/100`}</p>
+        {syntheticDemoResult && <p className="tool-notice">Synthetic Simulation Lab intelligence — presentation data only, not an external reputation finding.</p>}
+        <p className="result-verdict">{result.classification.replaceAll('_', ' ')} · {result.score === null ? 'Score unavailable' : `${syntheticDemoResult ? 'Demo score' : 'Provider score'} ${result.score}/100`}</p>
         <p className="tool-hint">Checked {new Date(result.checked_at).toLocaleString()}{result.expires_at && ` · Expires ${new Date(result.expires_at).toLocaleString()}`} · Cache: {result.cache_status}</p>
-        {result.providers.map(p => <div className="provider-result" key={p.provider}><h3>{p.provider} <small>{p.status.replaceAll('_', ' ')}</small></h3><p>{p.explanation}</p><p className="tool-hint">Observed {new Date(p.observed_at).toLocaleString()}</p></div>)}
+        {result.indicator.type !== 'ip' && <p className="tool-hint">AbuseIPDB is not applicable to {result.indicator.type} indicators. Look up a public IPv4 or IPv6 address to check its IP reputation.</p>}
+        {result.providers.filter(p => p.provider !== 'abuseipdb' || result.indicator.type === 'ip').map(p => <div className="provider-result" key={p.provider}><h3>{p.provider} <small>{p.status.replaceAll('_', ' ')}</small></h3><p>{p.explanation}</p><p className="tool-hint">{p.status === 'ok' ? 'Observed' : 'Checked'} {new Date(p.observed_at).toLocaleString()}</p></div>)}
         <ul className="tool-limitations">{result.limitations.map((text, i) => <li key={i}>{text}</li>)}</ul>
       </article>}
     </div>

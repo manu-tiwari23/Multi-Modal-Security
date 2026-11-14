@@ -106,6 +106,23 @@ def test_api_simulate_phishing_attack():
     assert data["top_alert"] is not None
 
 
+def test_api_simulate_demo_node_activity():
+    res = client.post(
+        "/api/simulate/attack",
+        json={"scenario": "node_activity", "attacker_ip": "192.0.2.10", "node_host": "demo-node-01"},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["scenario"] == "node_activity"
+    assert data["events_ingested"] == 1
+
+    events = client.get("/api/events?size=100&event_type=demo_node_activity").json()["events"]
+    matching = [event for event in events if event["event_type"] == "demo_node_activity"]
+    assert matching
+    assert matching[0]["entity"] == {"ip": "192.0.2.10", "user": None, "host": "demo-node-01", "hash": None}
+    assert matching[0]["raw"]["simulated"] is True
+
+
 def test_api_phishing_scan_clean_attachment():
     res = client.post(
         "/api/phishing/scan/attachment",

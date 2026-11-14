@@ -2,7 +2,7 @@ const tabs = [
   ['overview', 'Overview', '◉'], ['alerts', 'Incidents', '◎'],
   ['intelligence', 'Intelligence', '◇'], ['honeypot', 'Honeypot', '⬡'],
   ['phishing', 'Phishing', '⌁'], ['forensics', 'Forensics', '▧'], ['reports', 'Reports', '▤'],
-  ['events', 'Telemetry', '≋'], ['rules', 'Detection rules', '⌘'],
+  ['events', 'Telemetry', '≋'],
   ['response', 'Response', '↗'], ['account', 'Account & access', '⚙'],
   ['simulator', 'Simulation lab', '↯'],
 ]

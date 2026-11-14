@@ -2,7 +2,7 @@
 
 Living document. Update this as the project evolves — it should always reflect the *current real state*, not the plan. The agent reads this at the start of every session.
 
-_Last updated: 2026-11-13 — update this line every time you edit the file_
+_Last updated: 2026-11-14 — update this line every time you edit the file_
 
 ## Tech Stack (current, as actually implemented)
 
@@ -64,6 +64,8 @@ _Add new variables here the moment they're introduced in code._
 
 ## External Integrations
 
+Local `.env` now includes blank `VT_API_KEY` and `ABUSEIPDB_API_KEY` placeholders. Fill these with provider keys and restart the backend (settings and provider instances are cached). In Intelligence, enable "Allow external provider lookup" when requesting provider reports. Reserved simulation indicators continue using local demo results.
+
 | Service | Used by | Status |          
 |---|---|---|
 | VirusTotal API | Threat Intelligence module | Report-lookup provider implemented and mock-tested; explicit analyst opt-in, no live provider test performed |
@@ -80,11 +82,11 @@ _Add new variables here the moment they're introduced in code._
 | Honeypot | Phase 3 complete — deceptive virtual shell, bounded recorder, Cowrie parser, event normalizer, TTP clustering, & cross-modal correlation tested (35 unit tests) |
 | Phishing Detection | Phase 5 complete — All 4 features implemented and tested: Email header & content analyzer (41 tests), URL reputation scanner (50 tests), Static attachment analyzer (31 tests), Explanation generator + labeled precision/recall eval (8 tests), and FastAPI REST Gateway endpoints (/scan/url, /scan/email, /scan/attachment, /scan/composite, /explain, /stats, attack simulation) tested (130 phishing unit tests, 11 API tests, 371/371 total passing) |
 | Digital Forensics | Phase 6 complete — All 6 features implemented and tested: Evidence vault & chain of custody, file analysis & deleted file recovery, metadata extraction, browser artifact analysis, USB activity forensics, and automated integrity re-verification jobs with pipeline tamper alerting (63 unit tests, 231 total passing) |
-| Threat Intelligence | Validated IP/domain/URL/hash provider service, TTL cache, API and cached Copilot integration implemented; live Postgres cache/expiry verified; 576-test combined suite passed |
+| Threat Intelligence | Validated IP/domain/URL/hash provider service, TTL cache, API and cached Copilot integration implemented. The exact four Simulation Lab indicators have explicitly synthetic local demo records; ordinary indicators still require cached/configured provider evidence. Live Postgres cache/expiry verified. |
 | Incident Response | Phase 7 complete — All 4 features implemented and tested: Response recommender (`src/incident_response/recommender.py`), Analyst approval workflow (`src/incident_response/approval.py`), Pluggable action executor (`src/incident_response/executor.py`), Incident state tracker (`src/incident_response/state_tracker.py`), and REST API endpoints (`/api/ir/recommend/{incident_id}`, `/api/ir/approvals`, `/api/ir/execute/{action_id}`, `/api/ir/incidents/{incident_id}/state`, `/api/ir/incidents/{incident_id}/transition`, `/api/ir/stats`) (92 IR unit tests + 2 API tests) |
 | Reporting | Three generators implemented: incident, forensic case and threat activity; JSON/HTML/Markdown APIs. Full suite 508 passed including live tests (2026-11-12); dashboard integration and report visual QA pending |
 | Physical Alert (ESP32) | Deferred by user request (2026-11-12) |
-| Dashboard | Phase 1 complete (live event feed) |
+| Dashboard | Complete presentation workspace: responsive overview/globe, incidents, telemetry, honeypot, phishing, forensics, intelligence, response, reports, account controls, Copilot and a guided Simulation Lab. Demo topology persists with reserved IP labels and publishes synthetic telemetry; lab analytics include phishing/source counts, recent activity and severity. Standalone Detection Rules view removed. Production build and authenticated browser showcase verified 2026-11-14. |
 
 _Update per-module status as features land — keep this in sync with `TODO.md`, this is just the high-level view._
 

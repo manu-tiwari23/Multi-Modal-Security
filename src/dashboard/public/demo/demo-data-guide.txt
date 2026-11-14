@@ -1,0 +1,25 @@
+MULTI MODAL SECURITY - PRESENTER DEMO DATA GUIDE
+
+All indicators use IANA-reserved documentation namespaces and are safe for demos.
+
+1. SIMULATION LAB
+   Run "Full platform showcase" with 203.0.113.88.
+
+2. INCIDENTS AND RESPONSE
+   Open Incidents, expand the newest card, and continue to Response.
+   Execution stays simulated and always requires analyst approval.
+
+3. PHISHING
+   Upload phishing-demo.eml in Email mode, or suspicious-invoice.txt in Attachment mode.
+
+4. FORENSICS
+   Create a demo case, upload auth-telemetry.log, verify its hash, and run static analysis.
+
+5. INTELLIGENCE
+   Look up 203.0.113.88, account-verification.example.test, or the SHA-256 below:
+   f36f9731c93cebe6dd00be680e7049d69261100c9e5ff00fe110752b6fbd9694
+   Leave external providers disabled; unknown is an expected and honest result.
+
+6. TELEMETRY, HONEYPOT, REPORTS, AND COPILOT
+   Review generated events and the synthetic honeypot session, download a report,
+   then ask Copilot to summarize the selected incident with citations.

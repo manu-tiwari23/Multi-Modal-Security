@@ -1,0 +1,15 @@
+From: Security Review <security-alerts@account-verification.example.test>
+To: analyst@example.test
+Subject: URGENT: Verify your account within 24 hours
+Date: Tue, 10 Nov 2026 09:30:00 +0000
+Message-ID: <demo-phishing-001@example.test>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+This is an inert demonstration email for the Multi Modal Security phishing analyzer.
+
+Your account requires immediate verification. Sign in at:
+http://secure-login.example.test/verify/account?session=demo
+
+The .test domain is reserved and cannot resolve on the public internet.
+Do not enter real credentials into demonstration material.

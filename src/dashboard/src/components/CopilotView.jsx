@@ -1,14 +1,21 @@
 import { apiFetch } from '../api.js'
 import React, { useState, useEffect, useRef } from 'react'
 
+function answerWithoutDuplicateCitations(content, citations = []) {
+  if (!citations.length || typeof content !== 'string') return content
+  const marker = '\n---\n### 🔍 Grounding Evidence & Citations'
+  const index = content.indexOf(marker)
+  return index >= 0 ? content.slice(0, index).trimEnd() : content
+}
+
 export default function CopilotView() {
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
       role: 'assistant',
       content:
-        '👋 **Hello Analyst!** I am your **AI Security Copilot**.\n\n' +
-        'I am grounded in live MMS telemetry, OpenSearch logs, SOC correlated incidents, honeypot captures, and threat intelligence.\n\n' +
+        'I can help investigate the evidence currently available to MMS.\n\n' +
+        'Answers cite retrieved incidents, events, honeypot sessions, and cached intelligence. Missing evidence stays unknown.\n\n' +
         '**Quick Actions:**\n' +
         '- Ask me to investigate an active incident\n' +
         '- Look up threat intelligence for an IP or hash\n' +
@@ -110,10 +117,10 @@ export default function CopilotView() {
 
   // Quick prompt buttons
   const quickPrompts = [
-    { label: '🚨 Investigate Current Attack', prompt: 'Investigate the latest correlated incident and provide a technical threat breakdown.' },
-    { label: '🔍 Check Attacker IP 203.0.113.88', prompt: 'Lookup threat intelligence, reputation, and honeypot activity for IP 203.0.113.88.' },
-    { label: '📄 Generate Incident Report', prompt: 'Draft a complete executive and forensic incident report for the active incident.' },
-    { label: '🍯 Analyze Honeypot Activity', prompt: 'Analyze recent honeypot deception sessions and summarize observed attacker commands and payloads.' },
+    { label: 'Investigate latest incident', prompt: 'Investigate the latest correlated incident using only retrieved evidence.' },
+    { label: 'Explain highest-risk alert', prompt: 'Explain the highest-risk active alert and cite the events that support it.' },
+    { label: 'Summarize incident evidence', prompt: 'Summarize the evidence for the latest active incident and state any coverage limits.' },
+    { label: 'Analyze honeypot activity', prompt: 'Analyze recent honeypot sessions using recorded behavior only.' },
   ]
 
   const handleGenerateReportQuick = async () => {
@@ -151,9 +158,9 @@ export default function CopilotView() {
       {/* Header */}
       <div className="view-header">
         <div>
-          <h2 className="view-title">🤖 AI Security Copilot Command Center</h2>
+          <h2 className="view-title">Security Copilot</h2>
           <p className="view-subtitle">
-            Autonomous security reasoning with OpenSearch RAG, OpenAI tool calling, and human-in-the-loop containment
+            Evidence-grounded investigation assistance with read-only tools and cited sources
           </p>
         </div>
         <div className="copilot-header-actions">
@@ -212,14 +219,14 @@ export default function CopilotView() {
 
               {/* Message Content */}
               <div className="chat-message__text">
-                <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{answerWithoutDuplicateCitations(m.content, m.citations)}</div>
               </div>
 
               {/* Containment Recommendations Box */}
               {m.recommendations && m.recommendations.length > 0 && (
                 <div className="containment-box">
                   <div className="containment-box__header">
-                    <span>⚡ Recommended Containment Actions (Analyst Authorization Required)</span>
+                    <span>Suggested review actions</span>
                   </div>
                   <div className="containment-box__list">
                     {m.recommendations.map((rec, i) => (
@@ -229,12 +236,7 @@ export default function CopilotView() {
                           <strong>{rec.target}</strong>
                         </div>
                         <p className="containment-item__rationale">{rec.rationale}</p>
-                        <div className="containment-item__footer">
-                          <button className="btn-approve" onClick={() => alert(`Containment Action '${rec.action_type}' for ${rec.target} submitted for execution approval!`)}>
-                            ✅ Authorize Action
-                          </button>
-                          <span className="approval-status">Requires Level-2 Analyst Sign-off</span>
-                        </div>
+                        <p className="approval-status">Open the Response workspace to review an evidence-based plan. Copilot cannot approve or execute actions.</p>
                       </div>
                     ))}
                   </div>
@@ -291,7 +293,7 @@ export default function CopilotView() {
         <input
           type="text"
           className="copilot-input"
-          placeholder="Ask Copilot: 'Investigate incident INC-01', 'Lookup IP 203.0.113.88', 'Draft report'..."
+          placeholder="Ask Copilot to investigate an incident, explain an alert, or summarize retrieved evidence…"
           value={inputPrompt}
           onChange={(e) => setInputPrompt(e.target.value)}
           disabled={isLoading}

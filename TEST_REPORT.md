@@ -4,6 +4,50 @@ Log of test results, one entry per feature, added *before* checking it off in `T
 
 ## Log
 
+### Incident ID copy control (2026-11-14)
+- Dashboard production build passed. Added full selectable incident IDs and clipboard action outside the expandable header, with success/failure feedback and disabled copy for missing IDs. Browser clipboard verification not performed.
+
+### Phishing demo entry point (2026-11-14)
+- Dashboard production build passed; phishing/simulation API regression: **11 passed in 9.50s**. Existing bundle-size warning remains. Browser interaction verification not performed in this change.
+
+### AbuseIPDB indicator applicability (2026-11-14)
+- Threat intelligence service/API suite: **49 passed in 10.69s**. New tests ensure domains, URLs and hashes never invoke AbuseIPDB while other providers still run; IPv4 and IPv6 reach the mocked check endpoint with the correct IP parameter.
+- Dashboard production build passed, with existing bundle-size warning. No live provider requests or key validation performed.
+
+### Provider key configuration (2026-11-14)
+- `tests/threat_intel/test_service.py` and `tests/api/test_threat_intel_api.py`: **44 passed in 2.90s**. Confirmed runtime uses settings.vt_api_key/settings.abuseipdb_api_key and Settings reads .env; git check-ignore confirms .env is ignored. Live API verification pending user-supplied keys.
+
+### Overview blank graph follow-up (2026-11-14)
+- Previous fix only covered Simulation Lab. Root cause is the shared `max-width:100% !important` rule constraining Recharts' pixel-sized wrapper against its deliberately zero-width measuring parent.
+- Removed that constraint and the lab workaround. Production build passed. Actual OverviewView rendered with 40 synthetic events in a temporary isolated browser fixture: activity and severity SVGs measured 744x240 and 419x240, with visible curves and bars confirmed by screenshot. Fixture removed after verification. Signed-in live backend data was not verified in this check.
+
+### Simulation Lab chart rendering regression (2026-11-14)
+
+- Reproduced the defect in an authenticated browser: both Recharts containers had normal 230px height, but their internal measuring wrappers and SVGs had computed width `0`, leaving the cards blank.
+- Frontend production build: **passed** with Vite 8.2.1 and 2,477 transformed modules. Existing bundle-size warning remains non-blocking.
+- Authenticated visual browser QA: reopened Simulation Lab after reload and confirmed Recent activity is visibly drawn at 541.7px and Severity Breakdown at 299.9px; both SVG widths match their responsive containers.
+
+### Persistent topology and Simulation Lab analytics (2026-11-14)
+
+- Frontend production build: **passed** with Vite 8.2.1 and 2,477 transformed modules. Existing bundle-size warning remains non-blocking.
+- Focused regression: **55 passed** in 6.76s across threat-intelligence service, intelligence API and phishing/simulation API tests.
+- Authenticated isolated browser QA: added `demo-node-01`, verified IP `192.0.2.10` in the globe status UI, confirmed its synthetic activity reached Telemetry, switched to Simulation Lab and observed SOC/Phishing/Honeypot source totals plus Recent activity and Severity Breakdown, then returned to Overview and reloaded with the node still present.
+- Intelligence workflow QA: opened the bundled IP from Simulation Lab, ran lookup with external providers disabled, and received the local `mms_demo_dataset` result with demo score 86 plus explicit synthetic/non-external limitations.
+
+### Windows startup guide verification (2026-11-14)
+
+- Reproduced the reported condition: an API process occupied port 8000 while all Compose services were stopped; `/api/health` returned HTTP 503 with incident storage unavailable.
+- Started `redis`, `opensearch`, `postgres`, `minio`, and `mosquitto`, waited until all health-checked data services reported healthy, then launched the documented command with `.venv312\Scripts\python.exe -m uvicorn` from the repository root.
+- Corrected startup returned **HTTP 200** from `/api/health` with `status: ok`. Confirmed the virtual environment provides Python 3.12.10 and Uvicorn 0.54.0.
+- Documentation-only verification; no full regression suite or external provider request was needed.
+
+### Simulation Lab and demo-data showcase (2026-11-14)
+
+- Frontend production build: **passed** with Vite 8.2.1 and 2,476 transformed modules. The existing main-bundle size warning remains non-blocking.
+- Focused API/auth regression: **25 passed** in 71.65s (`tests/api/test_phishing_api.py`, `tests/api/test_auth_api.py`). No paid AI or live reputation-provider calls.
+- Browser QA used an isolated memory-auth analyst account: confirmed Detection Rules is absent from dashboard navigation; all five scenario cards and four demo indicators/files are exposed; the full showcase completed with eight returned pipeline results and an incident; the URL handoff opened Phishing with the reserved `.test` URL prefilled.
+- Asset delivery: `phishing-demo.eml`, `auth-telemetry.log`, `suspicious-invoice.txt` and `demo-data-guide.txt` each returned HTTP 200. The displayed SHA-256 matches `suspicious-invoice.txt`.
+
 ### Academic report artifact verification (2026-11-13)
 
 - Report-only QA: final Word document rendered using installed Microsoft Word PDF export and the packaged render_docx.py rasterizer through a task-local conversion bridge (LibreOffice unavailable). Source/final render diff and visual page review completed; final length 43 pages. Confirmed 13 embedded/report figure assets plus the retained college logo, 11 separate editable SVG diagrams, five native tables, three refreshed contents/list fields, sequential page numbers and source page geometry.
@@ -85,6 +129,9 @@ Log of test results, one entry per feature, added *before* checking it off in `T
 | 2026-11-12 | incident_response | Approval workflow (`ApprovalManager` request/approve/reject, human-only approver identity check, double-decision guard, TTL expiry, audit log) | unit | Pass | 21/21 tests passing (438/438 total unit tests) |
 | 2026-11-12 | incident_response | Action executor (`ActionExecutor` mandatory approval gate, `MockFirewallBackend`, `MockEDRBackend`, `MockWorkflowBackend`, rollback & audit log) | unit | Pass | 14/14 tests passing (452/452 total unit tests) |
 | 2026-11-12 | incident_response/api | Incident state tracking (`IncidentStateTracker` FSM, plan/action linking, transition audit) & REST API endpoints (`/api/ir/*`) | unit/integration | Pass | 11/11 state tracker & E2E IR tests + 2/2 API tests passing (465/465 total unit tests, 92/92 IR, 13/13 API) |
+| 2026-11-14 | alert-esp32 | AlertNotifierService (strict metadata sanitization, severity mapping, mock MQTT publish, physical ack callback) | unit | Pass | 4/4 tests passing (`tests/alert_esp32/test_notifier.py`) |
+| 2026-11-14 | alert-esp32 | ESP32 C++ firmware compilation with esp32:esp32 core & bundled PubSubClient | unit | Pass | 0 compile errors (914,371 bytes flash, 46,832 bytes RAM) |
+| 2026-11-14 | dashboard | Add Normal Node (+ Add Normal Node button, dynamic green dot topology, mesh links) | unit | Pass | Vite production build passing (2,477 modules, 0 errors) |
 
 **Test Type** — one of: `unit`, `integration`, `manual`
 **Result** — one of: `Pass`, `Fail`, `Pass with issues` (if it works but a bug was logged in `BUGS.md`)
@@ -106,3 +153,19 @@ Log of test results, one entry per feature, added *before* checking it off in `T
 3. Add a row here with the real result — log failures too, don't only record passes
 4. If it passed (or passed with a logged issue), check it off in `TODO.md` and add an entry to `CHANGELOG.md`
 5. If it failed, keep working — don't move to the next feature until this resolves or you've explicitly decided to defer it (log the deferral in `DECISIONS.md`)
+
+## 2026-11-13 — Current software verification and dashboard repair
+
+- Initial consolidated run: 673 passed, 2 failed, 5 skipped while infrastructure was starting. Failures identified reused playbook action IDs and concurrent correlation schema/correlation lock inversion.
+- Focused repair verification: 108 passed.
+- Consolidated rerun after repairs and cross-incident approval regression: **681 passed, zero skipped**, 54.09 seconds. Includes live Redis/OpenSearch/Postgres/MinIO integration tests. AI and reputation providers disabled by test configuration; no paid calls or live containment. Logs: `data/verification-current.log`, `data/verification-fixes.log`, `data/verification-final.log`.
+- Dashboard browser verification ongoing; empty snapshots no longer invent counts, hosts, addresses or service health.
+
+## 2026-11-14 — Dashboard completion and uploaded ESP32 regression
+
+- Fixed duplicate ESP32 test-module collection by retaining the canonical `tests/alert_esp32/test_notifier.py` and renaming the compatibility-layout copy to `tests/alert-esp32/test_notifier_legacy.py`.
+- Consolidated command: `.\.venv312\Scripts\python.exe -m pytest -q --tb=short -ra`.
+- Result: **689 passed, zero failures/skips** in **110.18 seconds**. Live Redis, OpenSearch, PostgreSQL and MinIO integration cases ran; paid AI and external reputation calls remained disabled/mocked.
+- Dashboard production build: Vite transformed 2,477 modules and completed successfully. A non-blocking bundle-size warning remains for the 688.51 kB main chunk.
+- Authenticated browser verification passed for simulation/live counters, observed-vs-simulated globe nodes, incident categories, incident-to-response routing, response plan creation/approval gate, phishing URL analysis, local threat-intelligence lookup, forensic evidence empty state, honeypot view, responsive telemetry cards, threat-report download and offline Copilot evidence/citations.
+- Main gateway restarted with `python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000`; dashboard remains available on port 5173.

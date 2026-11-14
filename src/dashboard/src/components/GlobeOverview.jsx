@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import '../globe.css'
 
 // Pre-configured distinct coordinate locations for connected network systems on the 3D globe
@@ -13,20 +13,14 @@ const SYSTEM_SLOTS = [
   { lat: 0, lon: 10 },     // System 8 (e.g. core-router, center)
 ]
 
-const DEFAULT_POOL = [
-  { id: 'prod-web-01', host: 'prod-web-01', ip: '10.0.1.10', role: 'Production Web Gateway' },
-  { id: 'db-cluster-01', host: 'db-cluster-01', ip: '10.0.2.20', role: 'Primary DB Cluster' },
-  { id: 'auth-gateway', host: 'auth-gateway', ip: '10.0.1.5', role: 'Authentication Service' },
-  { id: 'firewall-edge', host: 'firewall-edge', ip: '10.0.0.1', role: 'Perimeter Firewall' },
-  { id: 'honeypot-trap', host: 'honeypot-trap', ip: '10.0.99.2', role: 'SSH Deception Trap' },
-  { id: 'k8s-ingress', host: 'k8s-ingress', ip: '10.0.3.1', role: 'Kubernetes Ingress' },
-]
-
 export default function GlobeOverview({
   connected,
   alertCount,
   alerts = [],
   events = [],
+  customNodes = [],
+  onAddDemoNode,
+  onResetNodes,
   onInvestigate,
   onCopilot,
   canUseCopilot,
@@ -37,64 +31,9 @@ export default function GlobeOverview({
   const dragging = useRef(null)
   const lastMousePos = useRef({ x: 0, y: 0 })
   const shockwaves = useRef([])
-  const [nodeOverride, setNodeOverride] = useState(null) // null = auto, or number 1..6
 
-  // Discover connected network systems dynamically or through user node selector
+  // Discover connected network systems dynamically or through user additions
   const connectedSystems = useMemo(() => {
-    // If user clicked a specific node count (e.g. 1, 2, 3)
-    if (nodeOverride !== null && nodeOverride > 0) {
-      return DEFAULT_POOL.slice(0, nodeOverride).map((sys, idx) => {
-        const matchedAlerts = alerts.filter(
-          (a) =>
-            (a.primary_entity?.host || '').toLowerCase() === sys.host.toLowerCase() ||
-            (a.primary_entity?.ip || '') === sys.ip
-        )
-
-        let status = 'normal'
-        if (
-          matchedAlerts.some(
-            (a) =>
-              (a.severity || a.priority || '').toLowerCase().includes('crit') ||
-              (a.risk_score || 0) >= 70
-          )
-        ) {
-          status = 'critical'
-        } else if (
-          matchedAlerts.some(
-            (a) =>
-              (a.severity || a.priority || '').toLowerCase().includes('high') ||
-              (a.risk_score || 0) >= 30
-          )
-        ) {
-          status = 'mild'
-        } else if (idx === 0 && alerts.length > 0) {
-          // If simulation occurred and alerts exist, primary web node reflects attack status
-          const topAlert = alerts[0]
-          const s = (topAlert.severity || topAlert.priority || '').toLowerCase()
-          status = s.includes('crit') || (topAlert.risk_score || 0) >= 70 ? 'critical' : 'mild'
-        }
-
-        const slot = SYSTEM_SLOTS[idx % SYSTEM_SLOTS.length]
-        const phi = (90 - slot.lat) * (Math.PI / 180)
-        const theta = (slot.lon + 180) * (Math.PI / 180)
-
-        return {
-          ...sys,
-          status,
-          alerts: matchedAlerts,
-          eventsCount: events.filter(
-            (e) => (e.entity?.host || '').toLowerCase() === sys.host.toLowerCase()
-          ).length,
-          lat: slot.lat,
-          lon: slot.lon,
-          x: Math.sin(phi) * Math.cos(theta),
-          y: Math.cos(phi),
-          z: Math.sin(phi) * Math.sin(theta),
-        }
-      })
-    }
-
-    // Auto-discovery from live alerts and telemetry events
     const map = new Map()
 
     // 1. Systems in alerts
@@ -107,12 +46,8 @@ export default function GlobeOverview({
         map.set(key, {
           id: key,
           host: host || key,
-          ip: ip || '10.0.1.' + (map.size + 10),
-          role: (host || '').includes('db')
-            ? 'Database'
-            : (host || '').includes('fw')
-            ? 'Firewall'
-            : 'Web Gateway',
+          ip: ip || 'Unknown',
+          role: 'Observed system',
           alerts: [],
           eventsCount: 0,
           status: 'normal',
@@ -136,44 +71,50 @@ export default function GlobeOverview({
       const host = ev.entity?.host
       if (!host) continue
       if (!map.has(host)) {
+        const simulated = Boolean(ev.raw?.simulated || ev.enrichment?.simulation_scenario === 'node_activity')
         map.set(host, {
           id: host,
           host: host,
-          ip: ev.entity?.ip || '10.0.1.' + (map.size + 10),
-          role: host.includes('db')
-            ? 'Database'
-            : host.includes('gw')
-            ? 'Gateway'
-            : 'Application Server',
+          ip: ev.entity?.ip || 'Unknown',
+          role: simulated ? 'Synthetic telemetry node' : 'Observed system',
           alerts: [],
           eventsCount: 0,
-          status: 'normal',
+          status: simulated ? 'demo' : 'normal',
+          simulated,
         })
       }
       const item = map.get(host)
       item.eventsCount += 1
+      if ((!item.ip || item.ip === 'Unknown') && ev.entity?.ip) item.ip = ev.entity.ip
       const sev = (ev.severity || '').toLowerCase()
-      if (item.status !== 'critical' && (sev === 'high' || sev === 'medium')) {
+      if (!item.simulated && item.status !== 'critical' && (sev === 'high' || sev === 'medium')) {
         item.status = 'mild'
       }
     }
 
-    // Default: if no events/alerts, show 1 monitored system
-    if (map.size === 0) {
-      map.set('prod-web-01', {
-        id: 'prod-web-01',
-        host: 'prod-web-01',
-        ip: '10.0.1.10',
-        role: 'Production Host',
-        alerts: [],
-        eventsCount: 0,
-        status: 'normal',
-      })
+    // 3. Append clearly marked visual-only nodes added by the analyst.
+    for (const cn of customNodes) {
+      if (!map.has(cn.id)) {
+        map.set(cn.id, {
+          ...cn,
+          status: 'demo',
+        })
+      } else {
+        const existing = map.get(cn.id)
+        Object.assign(existing, cn, {
+          eventsCount: Math.max(existing.eventsCount || 0, cn.eventsCount || 0),
+          status: existing.status === 'critical' || existing.status === 'mild' ? existing.status : 'demo',
+          simulated: true,
+        })
+      }
     }
 
     const items = Array.from(map.values())
     return items.map((sys, idx) => {
-      const slot = SYSTEM_SLOTS[idx % SYSTEM_SLOTS.length]
+      const slot = SYSTEM_SLOTS[idx] || {
+        lat: Math.asin(1 - 2 * (idx + 0.5) / Math.max(items.length, 1)) * (180 / Math.PI),
+        lon: ((idx * 137.508) % 360) - 180,
+      }
       const phi = (90 - slot.lat) * (Math.PI / 180)
       const theta = (slot.lon + 180) * (Math.PI / 180)
       return {
@@ -185,7 +126,7 @@ export default function GlobeOverview({
         z: Math.sin(phi) * Math.sin(theta),
       }
     })
-  }, [nodeOverride, alerts, events])
+  }, [alerts, events, customNodes])
 
   // Overall posture based on system statuses
   const highestSeverity = useMemo(() => {
@@ -442,31 +383,39 @@ export default function GlobeOverview({
 
           // HUD Pill Box
           const textHost = sys.host
+          const textIp = sys.ip && sys.ip !== 'Unknown' ? sys.ip : 'IP unavailable'
           const textStatus =
             sys.status === 'critical'
               ? '● CRITICAL ATTACK'
               : sys.status === 'mild'
               ? '● MILD ACTIVITY'
+              : sys.status === 'demo'
+              ? '◇ SIMULATED'
               : '● SECURE · ONLINE'
 
           ctx.font = 'bold 10px monospace'
           const hostW = ctx.measureText(textHost).width
           ctx.font = '9px monospace'
+          const ipW = ctx.measureText(textIp).width
           const statW = ctx.measureText(textStatus).width
-          const boxW = Math.max(hostW, statW) + 14
+          const boxW = Math.max(hostW, ipW, statW) + 14
 
           ctx.fillStyle = 'rgba(11, 20, 30, 0.92)'
           ctx.strokeStyle = `${glowColor} 0.65)`
           ctx.lineWidth = 1
           ctx.beginPath()
-          ctx.roundRect(leaderX, leaderY - 26, boxW, 24, 5)
+          ctx.roundRect(leaderX, leaderY - 36, boxW, 34, 5)
           ctx.fill()
           ctx.stroke()
 
           // Text labels
           ctx.fillStyle = '#f8fafc'
           ctx.font = 'bold 9.5px monospace'
-          ctx.fillText(textHost, leaderX + 7, leaderY - 14)
+          ctx.fillText(textHost, leaderX + 7, leaderY - 24)
+
+          ctx.fillStyle = '#94a3b8'
+          ctx.font = '8.5px monospace'
+          ctx.fillText(textIp, leaderX + 7, leaderY - 14)
 
           ctx.fillStyle = nodeColor
           ctx.font = '8.5px monospace'
@@ -513,74 +462,57 @@ export default function GlobeOverview({
       <div className="globe-heading">
         <div className="globe-eyebrow">
           <span className={`pulse-led ${highestSeverity}`} />
-          NETWORK TOPOLOGY · {connectedSystems.length} {connectedSystems.length === 1 ? 'SYSTEM' : 'SYSTEMS'} CONNECTED
+          NETWORK TOPOLOGY · {connectedSystems.filter((system) => !system.simulated).length} OBSERVED · {customNodes.length} SIMULATED
         </div>
         <h2 id="globe-title">
           {highestSeverity === 'critical'
-            ? 'Host Intrusion Detected'
+            ? 'High-priority detections'
             : highestSeverity === 'high'
-            ? 'System Anomaly Detected'
-            : 'Connected Systems Radar'}
+            ? 'Activity to review'
+            : 'Observed systems'}
         </h2>
         <span className="globe-subtitle">
-          {connected
-            ? `Active 3D node topology · ${connectedSystems.length} monitored ${
-                connectedSystems.length === 1 ? 'system dot' : 'system dots'
-              }`
-            : 'Live gateway offline. System status unknown.'}
+          {connected ? 'Symbolic positions and links · not geographic or measured network traffic' : 'Gateway offline · showing last available snapshot'}
         </span>
       </div>
 
       {/* Top HUD Overlay: Node Counter, Switcher, and System Status Chips */}
       <div className="globe-hud-overlay">
-        {/* Systems Node Selector Pills (Allows instant testing of 1 dot, 2 dots, etc.) */}
+        {/* Node Addition Controls */}
         <div className="systems-count-selector">
-          <span className="selector-title">Nodes:</span>
           <button
-            className={`node-toggle-btn ${nodeOverride === 1 ? 'active' : ''}`}
-            onClick={() => setNodeOverride(1)}
-            title="Display exactly 1 connected system dot"
+            className="node-toggle-btn active"
+            onClick={onAddDemoNode}
+            title="Add a simulated node to preview the topology layout"
           >
-            1 Dot
+            + Demo node
           </button>
-          <button
-            className={`node-toggle-btn ${nodeOverride === 2 ? 'active' : ''}`}
-            onClick={() => setNodeOverride(2)}
-            title="Display exactly 2 connected system dots"
-          >
-            2 Dots
-          </button>
-          <button
-            className={`node-toggle-btn ${nodeOverride === 3 ? 'active' : ''}`}
-            onClick={() => setNodeOverride(3)}
-            title="Display 3 connected system dots"
-          >
-            3 Dots
-          </button>
-          <button
-            className={`node-toggle-btn ${nodeOverride === null ? 'active' : ''}`}
-            onClick={() => setNodeOverride(null)}
-            title="Auto-discover connected systems from live events & telemetry"
-          >
-            Auto ({connectedSystems.length})
-          </button>
+          {customNodes.length > 0 && (
+            <button
+              className="node-toggle-btn text-slate-400"
+              onClick={onResetNodes}
+              title="Reset added nodes to baseline"
+            >
+              Reset
+            </button>
+          )}
         </div>
 
         {/* System Health Badges */}
         <div className="sector-defense-matrix">
           {connectedSystems.map((sys) => {
-            const dot = sys.status === 'critical' ? '🔴' : sys.status === 'mild' ? '🟠' : '🟢'
+            const dot = sys.status === 'critical' ? '🔴' : sys.status === 'mild' ? '🟠' : sys.status === 'demo' ? '◇' : '🟢'
             const colorClass =
               sys.status === 'critical'
                 ? 'sec-critical'
                 : sys.status === 'mild'
                 ? 'sec-mild'
-                : 'sec-normal'
+                : sys.status === 'demo' ? 'sec-demo' : 'sec-normal'
             return (
               <div key={sys.id} className={`sector-pill ${colorClass}`}>
                 <span>{dot}</span>
-                <strong>{sys.host}</strong>
-                <small>{sys.status.toUpperCase()}</small>
+                <span className="sector-pill__identity"><strong>{sys.host}</strong><code>{sys.ip || 'IP unavailable'}</code></span>
+                <small>{sys.status === 'normal' ? 'NO MATCHED ALERT' : sys.status === 'demo' ? 'SIMULATED' : sys.status.toUpperCase()}</small>
               </div>
             )
           })}
@@ -629,15 +561,9 @@ export default function GlobeOverview({
       <div className="globe-live-ticker">
         <div className="ticker-label">Network Systems Status Stream</div>
         <div className="ticker-val">
-          {highestSeverity === 'critical'
-            ? `⚠️ System ${
-                connectedSystems.find((s) => s.status === 'critical')?.host || 'prod-web-01'
-              } under active attack · ${
-                alerts[0]?.title || 'Multi-Stage Ingress'
-              } (Risk Score: ${alerts[0]?.risk_score || 85}/100)`
-            : `${connectedSystems.length} ${
-                connectedSystems.length === 1 ? 'system' : 'systems'
-              } online · All system nodes nominal · Traps and detection rules standing by.`}
+          {connectedSystems.length
+            ? `${connectedSystems.filter((system) => !system.simulated).length} observed · ${customNodes.length} simulated · ${alerts.length} active alerts · Drag to rotate`
+            : 'No host telemetry yet. Run a simulation or connect a log source.'}
         </div>
       </div>
     </section>

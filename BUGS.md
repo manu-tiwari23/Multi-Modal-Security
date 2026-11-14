@@ -4,8 +4,6 @@ Known issues tracker. Log a bug the moment you find one, even if you don't fix i
 
 ## Open
 
-- Report preparation finding (2026-11-13): dashboard activity charts substitute synthetic counts when the recent-event total is zero (`src/dashboard/src/components/OverviewView.jsx`, `makeActivityBuckets`). Do not use these curves as measured telemetry; remove the fallback or visibly label a demo mode before final dashboard acceptance. No software fix was attempted during report preparation.
-
 - Pipeline audit: old Redis cursor loss path replaced with consumer-group retries/reclaim/quarantine; verification pending. Multi-worker WebSocket fan-out and replay-stable shared detection are now implemented; live verification remains pending.
 
 | ID | Module | Description | Severity | Found | Notes |
@@ -15,8 +13,17 @@ Known issues tracker. Log a bug the moment you find one, even if you don't fix i
 
 ## Resolved
 
+- AbuseIPDB non-IP routing (2026-11-14): domain/URL/hash lookups displayed an unsupported card with a misleading Observed timestamp. Skip incompatible provider routing and show applicability guidance; five new routing regressions pass.
+
+- B017 follow-up (2026-11-14): initial fix missed Overview. Removed shared `.recharts-wrapper` max-width constraint; the zero-width measuring parent is intentional Recharts structure, not a hidden-mount failure. Actual Overview component verified visually with synthetic events.
+
+- Dashboard synthetic empty-state telemetry (2026-11-14): removed generated activity curves and placeholder totals. Topology demo nodes are explicitly labelled simulated and excluded from observed counts; browser/build verification passed.
+
 | ID | Module | Description | Severity | Found | Resolved | Fix Summary |
 |---|---|---|---|---|---|---|
+| B017 | dashboard/simulation | Recent activity and Severity Breakdown contained data but rendered blank because the Recharts measuring wrapper remained 0x0 after opening the initially hidden view | Medium | 2026-11-14 | 2026-11-14 | Scoped the internal measuring wrapper to the chart canvas dimensions; build and authenticated visual QA confirm non-zero, visible SVGs |
+| B016 | dashboard/simulation/intelligence | Demo nodes disappeared after tab changes, lacked IP/telemetry, Simulation Lab omitted analytics, and bundled intelligence examples returned unexplained unknown results | Medium | 2026-11-14 | 2026-11-14 | Persisted reserved-IP nodes, published synthetic node events, added activity/severity/phishing analytics, and introduced an explicitly synthetic four-indicator local demo dataset |
+| B015 | documentation/runtime | Windows guide called Docker optional, omitted first-account setup, depended on shell activation, and showed unauthenticated protected API calls | High | 2026-11-14 | 2026-11-14 | Reproduced storage 503; documented and verified infrastructure health, direct venv Python startup, account creation, authenticated simulation and troubleshooting |
 | B012 | copilot | Deterministic incident/honeypot answers invented attack stages and used a default example IP | High | 2026-11-13 | 2026-11-13 | Evidence-first local facts and validated model fact selection; missing indicator requests clarification; 71 mocked/unit/API checks pass |
 | B013 | copilot/intelligence | Mock reputation entries were presented as factual attribution, including an empty-file hash labeled malware | High | 2026-11-13 | 2026-11-13 | Removed fabricated database; provider-backed/cached or explicitly unknown results, no fabricated honeypot reputation score; 61 targeted checks pass |
 | B014 | forensics | Invalid browser timestamps were replaced with current time | Medium | 2026-11-13 | 2026-11-13 | Preserve unknown timestamps and omit undated records from timelines; workflow tests cover it |

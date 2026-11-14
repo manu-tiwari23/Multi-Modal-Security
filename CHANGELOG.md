@@ -1,5 +1,57 @@
 # CHANGELOG.md
 
+### Added — 2026-11-14 incident ID copy
+- Display full incident IDs on collapsed and expanded cards with Copy ID and success/failure feedback. Missing IDs show Unavailable instead of substituting an alert ID. Dashboard build passes.
+
+### Added — 2026-11-14 explicit phishing demo
+- Added a dedicated Simulation Lab phishing demo section with sample email preview, one-click loading into Raw email analysis, URL handoff and campaign launch. Reuses the existing reserved-domain sample and simulation endpoint.
+- Production build and 11 phishing API tests pass.
+
+### Fixed — 2026-11-14 AbuseIPDB indicator routing
+- Skip AbuseIPDB for domains, URLs and hashes; display an applicability note instead of an unsupported result card, including older cached responses. Failure timestamps now say Checked rather than Observed.
+- Added non-IP routing and mocked public IPv4/IPv6 lookup regressions: 49 focused tests pass; dashboard production build passes.
+
+### Configuration — 2026-11-14 threat intelligence keys
+- Added missing VirusTotal and AbuseIPDB placeholders to ignored local .env, preserving existing settings. Documented backend restart and explicit external lookup in .env.example. Existing integration verified with 44 passing service/API tests; no live provider call made.
+
+### Fixed — 2026-11-14 Overview graph follow-up
+- Removed the shared Recharts wrapper max-width rule that collapsed graphs against an intentionally zero-width measuring parent. Removed the lab-only workaround; verified visible Overview activity curves and severity bars using synthetic events and passed the production build.
+
+### Fixed — 2026-11-14 Simulation Lab blank graphs
+- Corrected the Recharts measuring wrapper that remained `0x0` when Simulation Lab was mounted off-screen, causing both populated chart SVGs to render at zero width.
+- Scoped the sizing correction to Simulation Lab chart canvases. Authenticated visual QA now shows the activity curve and severity bars, with SVG widths matching their responsive containers.
+- Production dashboard build passes with the existing non-blocking bundle-size warning.
+
+### Fixed — 2026-11-14 persistent demo topology and lab analytics
+- Persisted clearly simulated topology nodes in browser-local state, assigned reserved `192.0.2.x` addresses, and added host/IP labels to both canvas callouts and node status pills.
+- Added the `node_activity` simulation path: adding a demo node publishes a low-severity synthetic event through the normal indexing, correlation and WebSocket pipeline so it appears in Telemetry.
+- Added live Recent activity and Severity Breakdown charts, per-source counts including Phishing, and a recent demonstration-event stream to Simulation Lab.
+- Added a local `mms_demo_dataset` provider for only the four bundled demo indicators. Results are prominently labeled synthetic presentation data; unlisted indicators and external-provider-disabled lookups retain honest unknown states.
+- Production dashboard build passes; **55 focused threat-intelligence/API tests pass**; authenticated browser QA verified node persistence, IP display, telemetry creation, phishing analytics and the scored intelligence handoff.
+
+### Fixed — 2026-11-14 Windows startup instructions
+- Replaced activation-dependent and unauthenticated commands in `HOW_TO_RUN.md` with a verified Windows sequence using the repository's `.venv312` Python directly.
+- Documented that the full persistent platform requires healthy Redis, OpenSearch, PostgreSQL and MinIO services before backend startup, plus first-account creation and authenticated/CSRF-protected simulations.
+- Added health verification, port-8000 diagnosis, common 503/module/sign-in troubleshooting, safe shutdown, and a concise repeat-start section.
+
+### Added — 2026-11-14 Simulation Lab presentation kit
+- Rebuilt Simulation Lab into a responsive guided showcase with five synthetic scenarios, pipeline-stage explanations, live result metrics and direct investigation links.
+- Added copyable reserved IP/domain/URL/hash indicators and four downloadable inert demo files for phishing, attachment analysis, forensics and presenter guidance. Workflow links now prefill the selected demo indicator without enabling external lookup.
+- Removed the standalone Detection Rules view, route and navigation entry from the dashboard while preserving backend detection and incident-level rule evidence.
+- Verified production build, four HTTP-served demo assets, 25 focused API/auth tests, authenticated showcase execution and responsive browser rendering.
+
+### Fixed — 2026-11-14 dashboard completion and consolidated verification
+- Removed fabricated empty-state graph counts, placeholder topology hosts/IPs, inferred service-health claims and hard-coded Copilot attacker prompts. Manual topology additions are now explicitly simulated and excluded from observed-system counts.
+- Reworked responsive width containment and added complete Telemetry card styling, keyboard expansion and bounded raw-event rendering. Incident response actions now open the selected durable workflow directly.
+- Kept Copilot read-only in the UI, removed its decorative authorization control and eliminated duplicate citation rendering. Verified report download and the major dashboard workflows in an authenticated browser session.
+- Renamed the ESP32 compatibility test copy to avoid Python module-name collision while preserving both uploaded layouts.
+- Production dashboard build passes; consolidated result is **689 passed, zero failures/skips** with live infrastructure integrations.
+
+### Fixed — 2026-11-13 runtime verification
+- Generate unique executable action IDs for each recommendation, preventing approvals/results from another incident being reused through template IDs. Added a cross-incident approval regression.
+- Commit schema initialization before correlation/response operations acquire transaction locks, eliminating the observed concurrent correlation deadlock.
+- Current consolidated suite: 681 passed, no skips. All four data services healthy; dashboard/browser refinement in progress.
+
 ### Documentation — 2026-11-13 academic report
 - Created an editable Word mini-project report using the supplied current template and sample typography, with student/guide details, implemented and planned scope, dated verification evidence, literature references and AI/ML appendices. Included 13 figures and supplied 11 editable SVG diagrams separately. No pending software completion gate was marked complete. Artifact formatting/package/render checks are recorded in TEST_REPORT.md; synthetic empty-state dashboard chart fallback was recorded in BUGS.md.
 
@@ -13,6 +65,16 @@ All notable changes to MMS are logged here, one entry per completed and tested f
 ## [Unreleased]
 
 ### Added
+- Phase 9 ESP32 Physical Alert System:
+  - Created `AlertNotifierService` (`src/alert_esp32/service.py`) and `AlertNotification` model (`src/alert_esp32/models.py`) with strict data sanitization (metadata only: severity, incident_type, source, timestamp; zero raw logs, IOCs, or credentials). Subscribes to `alerts/ack` for physical button feedback.
+  - Developed full Arduino C++ firmware (`src/alert-esp32/firmware/mms_alert_esp32/mms_alert_esp32.ino`) implementing Wi-Fi auto-reconnection, MQTT subscription, multi-state LED logic (Green: GPIO 18, Yellow: GPIO 19, Red: GPIO 21), Active Buzzer driver (GPIO 22), and debounced physical acknowledge button (GPIO 23). Verified compilation with Arduino CLI (`esp32:esp32:esp32`).
+  - Added full hardware connection schematic, ASCII breadboard diagram, and pinout documentation in `src/alert-esp32/circuit_diagram.md`.
+  - Added automated flashing tool script `src/alert-esp32/flash_firmware.bat` targeting COM6.
+  - Added unit test suite `tests/alert_esp32/test_notifier.py` covering sanitization, severity mapping, MQTT publishing, and acknowledge callback (4 tests passing).
+  - Integrated `AlertNotifierService` into FastAPI gateway `src/api/main.py` lifespan and `ingest_pipeline_event`.
+- Connected Network Systems Node Addition Button (`OverviewView.jsx` & `GlobeOverview.jsx`):
+  - Added "+ Add Normal Node ({count})" and "Reset Nodes" buttons on the Dashboard Homepage Analyst Quick Actions bar and Globe HUD.
+  - Dynamically injects nominal hosts (green dots) onto the 3D topology globe with active mesh links and host information pills.
 - Connected Network Systems 3D Globe: Re-architected `GlobeOverview.jsx` from geographical continent clouds to a network node topology visualizer. Each dot on the 3D globe represents an actual connected system/host (1 system connected = 1 dot, 2 systems = 2 dots, N systems = N dots). System nodes reflect live health: GREEN for nominal/secure nodes, ORANGE for mild activity, and RED for attacked systems with localized ground shockwaves, beacon leader lines, and HUD info pills. Added animated inter-system network mesh links with traveling packet indicators and an interactive node count selector (`1 Dot`, `2 Dots`, `3 Dots`, `Auto`).
 - Simplified & Categorized Incidents View (`AlertsView.jsx`): Transformed the Incidents tab activity cards to be clean, scannable, and low-clutter by default (showing priority/severity badge, title, host/IP quick chips, risk score meter, and toggle button). Clicking any activity expands dedicated categorized panels: `📋 Overview & Entities`, `🎯 Detection & MITRE`, `📊 Score Breakdown`, and `⚡ Response Actions`.
 

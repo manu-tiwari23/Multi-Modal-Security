@@ -25,7 +25,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from opensearchpy import OpenSearch
 
 from src.shared.config import settings
@@ -78,6 +78,7 @@ from src.phishing.attachment_analyzer import AttachmentAnalyzer
 from src.phishing.explanation_generator import ExplanationGenerator
 from src.phishing.models import PhishingVerdict, ParsedEmail
 from src.incident_response import ApprovalStatus, IncidentPhase, ResponseRecommender
+from src.alert_esp32.service import AlertNotifierService
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,10 @@ correlation_engine = (CorrelationEngine(correlation_window_seconds=300) if setti
     else DurableCorrelationEngine(PostgresIncidentRepository(settings.postgres_url, settings.incident_db_schema,
         settings.storage_timeout_seconds), status_provider=response_incident_statuses))
 alert_manager = AlertManager(min_score_to_alert=15.0)
+alert_notifier = AlertNotifierService(
+    broker_host=settings.mqtt_broker_host,
+    broker_port=settings.mqtt_broker_port,
+)
 
 session_recorder = SessionRecorder()
 deception_service = DeceptionService(recorder=session_recorder)
@@ -226,6 +231,11 @@ async def ingest_pipeline_event(event: SecurityEvent) -> dict[str, Any]:
     if incident:
         # 4. Score and alert
         alert = alert_manager.process_incident(incident)
+        if alert:
+            try:
+                alert_notifier.notify_from_alert(alert.model_dump(mode="json"))
+            except Exception as exc:
+                logger.debug("Physical alert dispatch skipped: %s", exc)
 
     # 5. Broadcast live message via WebSocket
     payload = {
@@ -280,12 +290,20 @@ async def _redis_to_websocket_relay() -> None:
 async def lifespan(app: FastAPI):
     """Run ingestion and cross-worker live fan-out with orderly shutdown."""
     global _relay_task, _live_updates
+    try:
+        alert_notifier.connect()
+    except Exception as exc:
+        logger.debug("MQTT alert notifier skipped: %s", exc)
     _live_updates = LiveUpdates(settings.redis_url, manager.broadcast)
     fanout_task = asyncio.create_task(_live_updates.listen())
     _relay_task = asyncio.create_task(_redis_to_websocket_relay())
     try:
         yield
     finally:
+        try:
+            alert_notifier.disconnect()
+        except Exception:
+            pass
         _relay_task.cancel()
         fanout_task.cancel()
         await asyncio.gather(_relay_task, fanout_task, return_exceptions=True)
@@ -539,6 +557,7 @@ async def get_honeypot_attackers():
 class SimulationRequest(BaseModel):
     scenario: str = "multistage"
     attacker_ip: str = "203.0.113.88"
+    node_host: str | None = Field(default=None, min_length=1, max_length=63, pattern=r"^[A-Za-z0-9][A-Za-z0-9.-]*$")
 
 
 @app.post("/api/simulate/attack")
@@ -547,6 +566,23 @@ async def simulate_attack(req: SimulationRequest):
     now = datetime.now(timezone.utc)
     attacker_ip = req.attacker_ip
     events_generated = []
+
+    if req.scenario == "node_activity":
+        host = req.node_host or "demo-node-01"
+        ev_node = SecurityEvent(
+            timestamp=now,
+            source="soc",
+            severity="low",
+            entity=Entity(ip=attacker_ip, host=host),
+            event_type="demo_node_activity",
+            raw={
+                "simulated": True,
+                "activity": "synthetic_node_connected",
+                "message": f"Synthetic demo node {host} connected from reserved address {attacker_ip}",
+            },
+            enrichment={"simulation_scenario": "node_activity"},
+        )
+        events_generated.append(await ingest_pipeline_event(ev_node))
 
     if req.scenario in ("ssh_brute_force", "multistage"):
         # 1. Failed SSH Attempts (triggers SOC-RULE-001 at 5 attempts)

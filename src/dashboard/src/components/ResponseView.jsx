@@ -23,9 +23,9 @@ function ResponseActionCard({ entry, editable, busy, onAction }) {
   </article>
 }
 
-export default function ResponseView({ user }) {
+export default function ResponseView({ user, initialIncident = '' }) {
   const [incidents, setIncidents] = useState([])
-  const [identifier, setIdentifier] = useState('')
+  const [identifier, setIdentifier] = useState(initialIncident)
   const [workflow, setWorkflow] = useState(null)
   const [phase, setPhase] = useState('')
   const [reason, setReason] = useState('')
@@ -37,6 +37,7 @@ export default function ResponseView({ user }) {
     requestJSON('/api/incidents').then(data => { if (active) setIncidents(data.incidents) }).catch(e => { if (active) setError(e.message) })
     return () => { active = false }
   }, [])
+  useEffect(() => { if (initialIncident) perform(() => load(initialIncident)) }, [initialIncident])
   async function load(id) {
     const data = await requestJSON(`/api/ir/incidents/${encodeURIComponent(id)}/workflow`)
     setWorkflow(data); setPhase(data.allowed_transitions[0] || '')

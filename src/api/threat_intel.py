@@ -23,6 +23,7 @@ def lookup_indicator(body: LookupRequest, service=Depends(get_threat_intel)):
 
 @router.get("/api/threat-intel/status")
 def threat_intel_status(service=Depends(get_threat_intel)):
-    return {"providers": [{"name": p.name, "configured": bool(p.api_key)} for p in service.providers],
+    return {"providers": [{"name": p.name, "configured": bool(getattr(p, "api_key", "")),
+                            "local": bool(getattr(p, "local", False))} for p in service.providers],
             "external_lookup_default": False,
             "notice": "Explicit external lookups disclose the indicator to the configured providers, including possible publication in their datasets."}

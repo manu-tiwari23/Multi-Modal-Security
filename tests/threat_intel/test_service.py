@@ -6,7 +6,7 @@ import pytest
 
 from src.threat_intel.cache import CacheUnavailable, MemoryCache
 from src.threat_intel.models import Indicator, ProviderResult
-from src.threat_intel.providers import AbuseIPDBProvider, VirusTotalProvider
+from src.threat_intel.providers import AbuseIPDBProvider, DemoDatasetProvider, VirusTotalProvider
 from src.threat_intel.service import ThreatIntelService
 
 
@@ -18,6 +18,30 @@ class CountingProvider:
     def lookup(self, indicator):
         self.calls += 1
         return ProviderResult(provider=self.name, status="ok", classification="flagged", score=80, explanation="Synthetic test response")
+
+
+@pytest.mark.parametrize("value", ["example.com", "https://example.com/path", "a" * 64])
+def test_non_ip_lookup_skips_abuseipdb(value):
+    abuse = AbuseIPDBProvider("test-key")
+    def unexpected_lookup(indicator):
+        pytest.fail("Non-IP indicator must not be routed to AbuseIPDB")
+    abuse.lookup = unexpected_lookup
+    other = CountingProvider()
+    result = ThreatIntelService([abuse, other]).lookup(value, allow_external=True)
+    assert [p.provider for p in result.providers] == [other.name]
+    assert other.calls == 1
+
+
+@pytest.mark.parametrize("value", ["8.8.8.8", "2001:4860:4860::8888"])
+def test_ip_lookup_routes_to_abuseipdb(value):
+    requests = []
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json={"data": {"abuseConfidenceScore": 10, "totalReports": 2}})
+    abuse = AbuseIPDBProvider("test-key", transport=httpx.MockTransport(respond))
+    result = ThreatIntelService([abuse]).lookup(value, allow_external=True)
+    assert result.providers[0].status == "ok"
+    assert requests[0].url.params["ipAddress"] == value
 
 
 @pytest.mark.parametrize("value,kind,normalized", [
@@ -50,6 +74,28 @@ def test_private_and_synthetic_indicators_stay_local(value):
     assert result.score is None
     assert result.providers[0].status == "unsupported"
     assert provider.calls == 0
+
+
+@pytest.mark.parametrize("value,expected_score", [
+    ("203.0.113.88", 86),
+    ("account-verification.example.test", 78),
+    ("http://secure-login.example.test/verify/account?session=demo", 92),
+    ("f36f9731c93cebe6dd00be680e7049d69261100c9e5ff00fe110752b6fbd9694", 72),
+])
+def test_local_demo_dataset_returns_explicit_synthetic_result(value, expected_score):
+    external = CountingProvider()
+    result = ThreatIntelService([DemoDatasetProvider(), external]).lookup(value)
+    assert result.classification == "flagged"
+    assert result.score == expected_score
+    assert result.providers[0].details["synthetic"] is True
+    assert "synthetic Simulation Lab result" in result.limitations[0]
+    assert external.calls == 0
+
+
+def test_local_demo_dataset_does_not_rate_unlisted_indicators():
+    result = ThreatIntelService([DemoDatasetProvider()]).lookup("8.8.8.8")
+    assert result.classification == "unknown"
+    assert result.score is None
 
 
 def test_opt_in_and_cache_coalesce_repeated_lookups():

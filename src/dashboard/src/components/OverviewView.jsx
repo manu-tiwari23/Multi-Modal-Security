@@ -6,7 +6,9 @@ import {
   Bug,
   Clock3,
   Fish,
+  PlusCircle,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -26,56 +28,16 @@ import {
 } from 'recharts'
 import GlobeOverview from './GlobeOverview'
 import { apiFetch } from '../api'
+import { makeActivityBuckets, makeSeverityData } from '../telemetryData'
 import '../globe.css'
-
-const SEVERITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO']
-
-function makeActivityBuckets(events = []) {
-  const now = Date.now()
-  const windowMs = 24 * 60 * 60 * 1000
-  const starts = now - windowMs
-  const bucketSize = windowMs / 8
-
-  const buckets = Array.from({ length: 8 }, (_, index) => {
-    const bucketTime = new Date(starts + index * bucketSize)
-    return {
-      label: bucketTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      events: 0,
-      critical: 0,
-      high: 0,
-    }
-  })
-
-  // Distribute real events
-  for (const event of events) {
-    const t = new Date(event.timestamp || event.created_at || now).getTime()
-    if (!Number.isFinite(t) || t < starts || t > now) continue
-    const index = Math.min(7, Math.max(0, Math.floor((t - starts) / bucketSize)))
-    buckets[index].events += 1
-    const sev = (event.severity || '').toUpperCase()
-    if (sev === 'CRITICAL' || sev === 'P1') buckets[index].critical += 1
-    if (sev === 'HIGH' || sev === 'P2') buckets[index].high += 1
-  }
-
-  // If there are few or no events in past 24h, provide baseline telemetry curves
-  const totalEvents = buckets.reduce((acc, b) => acc + b.events, 0)
-  if (totalEvents === 0) {
-    const mockPattern = [12, 19, 15, 28, 42, 35, 48, events.length > 0 ? events.length : 22]
-    mockPattern.forEach((val, i) => {
-      buckets[i].events = val
-      buckets[i].critical = i >= 4 ? Math.floor(val * 0.15) : 0
-      buckets[i].high = Math.floor(val * 0.25)
-    })
-  }
-
-  return buckets
-}
 
 export default function OverviewView({
   connected,
   pipelineStats = {},
   events = [],
   liveAlerts = [],
+  customNodes = [],
+  onCustomNodesChange,
   onNavigate,
   onCopilot,
   canUseCopilot = true,
@@ -84,22 +46,47 @@ export default function OverviewView({
   const [simulating, setSimulating] = useState(false)
   const [simulationNotice, setSimulationNotice] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const handleAddDemoNode = async () => {
+    const idx = customNodes.length
+    if (idx >= 50) {
+      setSimulationNotice('Demo topology is limited to 50 nodes.')
+      return
+    }
+    const host = `demo-node-${String(idx + 1).padStart(2, '0')}`
+    const newNode = {
+      id: host,
+      host,
+      ip: `192.0.2.${10 + idx}`,
+      role: 'Synthetic telemetry node',
+      status: 'demo',
+      simulated: true,
+      alerts: [],
+      eventsCount: 1,
+    }
+    onCustomNodesChange?.((previous) => [...previous, newNode])
+    try {
+      const response = await apiFetch('/api/simulate/attack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario: 'node_activity', attacker_ip: newNode.ip, node_host: newNode.host }),
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      await onRefresh?.()
+      setSimulationNotice(`Added ${newNode.host} (${newNode.ip}) and published its synthetic activity to Telemetry.`)
+    } catch {
+      setSimulationNotice(`Added ${newNode.host} (${newNode.ip}) to the globe, but its telemetry event could not be published.`)
+    }
+  }
+
+  const handleResetNodes = () => {
+    onCustomNodesChange?.([])
+    setSimulationNotice('Removed persistent demo nodes from the globe. Their historical telemetry remains in the event store.')
+  }
 
   // Chart data
   const activityData = useMemo(() => makeActivityBuckets(events), [events])
 
-  const severityData = useMemo(() => {
-    return SEVERITIES.map((sev) => {
-      const eventCount = events.filter((e) => (e.severity || '').toUpperCase() === sev).length
-      const alertCount = liveAlerts.filter(
-        (a) => (a.severity || a.priority || '').toUpperCase() === sev
-      ).length
-      return {
-        severity: sev,
-        count: Math.max(eventCount, alertCount),
-      }
-    })
-  }, [events, liveAlerts])
+  const severityData = useMemo(() => makeSeverityData(events), [events])
 
   const criticalAlertsCount = useMemo(() => {
     return liveAlerts.filter((a) => {
@@ -120,7 +107,7 @@ export default function OverviewView({
       })
       if (res.ok) {
         setSimulationNotice(
-          '🔴 Live Multi-Stage Attack Ingress simulated! Infiltration detected at 198.51.100.77. Globe status turning to Red Threat Surge.'
+          'Synthetic scenario submitted. Review its events and detections in Incidents.'
         )
         if (onRefresh) onRefresh()
       } else {
@@ -146,11 +133,11 @@ export default function OverviewView({
         <div>
           <div className="ops-eyebrow">
             <span className="pulse-led" />
-            REAL-TIME SECURITY COMMAND CENTER
+            SECURITY OPERATIONS
           </div>
-          <h1 className="ops-title">Global Threat Operations</h1>
+          <h1 className="ops-title">Overview</h1>
           <p className="ops-subtitle">
-            Autonomous multi-sensor correlation, live telemetry streaming, and attack visualization
+            Your recent telemetry, detections, and investigation workspace.
           </p>
         </div>
 
@@ -178,12 +165,32 @@ export default function OverviewView({
         <button
           className="toolbar-btn primary"
           onClick={handleSimulate}
-          disabled={simulating}
-          title="Trigger a simulated attack to watch the globe heat map morph into fiery red/orange"
+          disabled={simulating || !canUseCopilot}
+          title="Generate synthetic events for a test investigation"
         >
           <Bug size={14} className="text-amber-400" />
-          <span>{simulating ? 'Simulating Attack...' : 'Simulate Attack Ingress'}</span>
+          <span>{simulating ? 'Simulating Attack...' : 'Run simulation'}</span>
         </button>
+
+        <button
+          className="toolbar-btn text-emerald-400 border-emerald-400/30"
+          onClick={handleAddDemoNode}
+          title="Add a clearly labelled simulated node to preview the globe layout"
+        >
+          <PlusCircle size={14} className="text-emerald-400" />
+          <span>Add demo node ({customNodes.length})</span>
+        </button>
+
+        {customNodes.length > 0 && (
+          <button
+            className="toolbar-btn text-slate-400"
+            onClick={handleResetNodes}
+            title="Remove simulated visualization nodes"
+          >
+            <RotateCcw size={13} />
+            <span>Clear demo nodes</span>
+          </button>
+        )}
 
         <button className="toolbar-btn" onClick={() => onNavigate('phishing')}>
           <Fish size={14} className="text-cyan-400" />
@@ -215,25 +222,25 @@ export default function OverviewView({
 
       {/* Metric Cards Grid */}
       <section className="metric-cards-grid">
-        {/* Events Ingested */}
-        <div className="ops-metric-card" onClick={() => onNavigate('events')} role="button" tabIndex={0}>
+        {/* Recent events */}
+        <div className="ops-metric-card" onClick={() => onNavigate('events')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click() } }}>
           <div className="card-top">
-            <span className="card-label">Events Ingested</span>
+            <span className="card-label">Recent events</span>
             <div className="card-icon-wrap text-cyan-400">
               <Activity size={16} />
             </div>
           </div>
           <div className="card-value">
-            {events.length > 0 ? events.length.toLocaleString() : (pipelineStats.rules_loaded ? '1,420' : '0')}
+            {events.length.toLocaleString()}
           </div>
           <div className="card-bottom">
-            <span>Normalized telemetry stream</span>
+            <span>Loaded telemetry sample</span>
             <ArrowUpRight size={14} className="card-arrow" />
           </div>
         </div>
 
         {/* Active Incidents */}
-        <div className="ops-metric-card" onClick={() => onNavigate('response')} role="button" tabIndex={0}>
+        <div className="ops-metric-card" onClick={() => onNavigate('response')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click() } }}>
           <div className="card-top">
             <span className="card-label">Active Incidents</span>
             <div className="card-icon-wrap text-orange-400">
@@ -248,7 +255,7 @@ export default function OverviewView({
         </div>
 
         {/* Critical Alerts */}
-        <div className="ops-metric-card" onClick={() => onNavigate('alerts')} role="button" tabIndex={0}>
+        <div className="ops-metric-card" onClick={() => onNavigate('alerts')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click() } }}>
           <div className="card-top">
             <span className="card-label">Critical Alerts</span>
             <div className="card-icon-wrap text-red-400">
@@ -256,7 +263,7 @@ export default function OverviewView({
             </div>
           </div>
           <div className="card-value">
-            {criticalAlertsCount > 0 ? criticalAlertsCount : (pipelineStats.active_alerts ?? 0)}
+            {criticalAlertsCount}
           </div>
           <div className="card-bottom">
             <span>Priority rule triggers</span>
@@ -265,7 +272,7 @@ export default function OverviewView({
         </div>
 
         {/* Honeypot Sessions */}
-        <div className="ops-metric-card" onClick={() => onNavigate('honeypot')} role="button" tabIndex={0}>
+        <div className="ops-metric-card" onClick={() => onNavigate('honeypot')} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click() } }}>
           <div className="card-top">
             <span className="card-label">Honeypot Sessions</span>
             <div className="card-icon-wrap text-amber-400">
@@ -286,6 +293,9 @@ export default function OverviewView({
         alertCount={pipelineStats.active_alerts}
         alerts={liveAlerts}
         events={events}
+        customNodes={customNodes}
+        onAddDemoNode={handleAddDemoNode}
+        onResetNodes={handleResetNodes}
         onInvestigate={() => onNavigate('alerts')}
         onCopilot={onCopilot}
         canUseCopilot={canUseCopilot}
@@ -293,12 +303,12 @@ export default function OverviewView({
 
       {/* Modern Analytics & Activity Charts Section */}
       <section className="charts-section-grid">
-        {/* Chart 1: Event Telemetry Rate (AreaChart) */}
+        {/* Chart 1: Recent activity (AreaChart) */}
         <div className="chart-card">
           <div className="chart-header">
             <div>
-              <h2 className="chart-title">Event Telemetry Rate</h2>
-              <p className="chart-subtitle">Normalized events ingested in the past 24 hours</p>
+              <h2 className="chart-title">Recent activity</h2>
+              <p className="chart-subtitle">Loaded events in the last 24 hours · 3-hour buckets</p>
             </div>
             <div className="chart-legend-badge">
               <span className="legend-dot" style={{ background: '#fbbf24' }} /> Events
@@ -357,7 +367,7 @@ export default function OverviewView({
           <div className="chart-header">
             <div>
               <h2 className="chart-title">Severity Breakdown</h2>
-              <p className="chart-subtitle">Event & alert distribution by classification</p>
+              <p className="chart-subtitle">Severity of loaded events</p>
             </div>
             <Clock3 size={15} className="text-slate-500" />
           </div>
@@ -407,7 +417,7 @@ export default function OverviewView({
             {liveAlerts.length === 0 ? (
               <div style={{ padding: '30px 20px', textAlign: 'center', color: '#64748b', fontSize: '12px' }}>
                 <ShieldCheck size={28} style={{ margin: '0 auto 8px', color: '#34d399' }} />
-                No active critical alerts. Perimeter nominal.
+                No active alerts in the current snapshot.
               </div>
             ) : (
               liveAlerts.slice(0, 4).map((alert, idx) => (
@@ -415,7 +425,7 @@ export default function OverviewView({
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div className="list-row-title">{alert.title || 'Security Detection Alert'}</div>
                     <div className="list-row-meta">
-                      Host: {alert.primary_entity?.host || 'prod-host-01'} · Score: {alert.risk_score || 85}/100
+                      Host: {alert.primary_entity?.host || alert.primary_entity?.ip || 'Unknown'} · Score: {alert.risk_score ?? '—'}/100
                     </div>
                   </div>
                   <span
@@ -434,7 +444,7 @@ export default function OverviewView({
                           : '#fb923c',
                     }}
                   >
-                    {(alert.severity || alert.priority || 'HIGH').toUpperCase()}
+                    {(alert.severity || alert.priority || 'UNKNOWN').toUpperCase()}
                   </span>
                 </div>
               ))
@@ -447,7 +457,7 @@ export default function OverviewView({
           <div className="list-box-header">
             <div>
               <div className="list-box-title">Deception & Honeypot Status</div>
-              <div style={{ fontSize: '11px', color: '#64748b' }}>Real-time honeypot sensors & traps</div>
+              <div style={{ fontSize: '11px', color: '#64748b' }}>Open an investigation workflow</div>
             </div>
             <button className="list-box-link" onClick={() => onNavigate('honeypot')}>
               View honeypots ↗
@@ -456,24 +466,24 @@ export default function OverviewView({
           <div className="list-box-body">
             <div className="list-row" onClick={() => onNavigate('honeypot')}>
               <div>
-                <div className="list-row-title">SSH & Web Deception Traps</div>
-                <div className="list-row-meta">Simulated high-interaction services active</div>
+                <div className="list-row-title">Honeypot sessions</div>
+                <div className="list-row-meta">Review recorded deception activity</div>
               </div>
-              <span style={{ color: '#34d399', fontSize: '11px', fontWeight: 600 }}>ARMED</span>
+              <span style={{ color: '#34d399', fontSize: '11px', fontWeight: 600 }}>OPEN</span>
             </div>
             <div className="list-row" onClick={() => onNavigate('forensics')}>
               <div>
                 <div className="list-row-title">Digital Forensics Vault</div>
                 <div className="list-row-meta">Automated SHA-256 artifact integrity hashing</div>
               </div>
-              <span style={{ color: '#38bdf8', fontSize: '11px', fontWeight: 600 }}>ONLINE</span>
+              <span style={{ color: '#38bdf8', fontSize: '11px', fontWeight: 600 }}>OPEN</span>
             </div>
             <div className="list-row" onClick={() => onNavigate('phishing')}>
               <div>
                 <div className="list-row-title">Phishing Email & URL Classifier</div>
                 <div className="list-row-meta">Multi-vector lexical + header heuristic scanning</div>
               </div>
-              <span style={{ color: '#34d399', fontSize: '11px', fontWeight: 600 }}>ACTIVE</span>
+              <span style={{ color: '#34d399', fontSize: '11px', fontWeight: 600 }}>OPEN</span>
             </div>
           </div>
         </div>

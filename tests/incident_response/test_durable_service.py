@@ -87,3 +87,20 @@ def test_lifecycle_is_validated_and_audited():
     workflow = service.workflow("incident-synthetic")
     assert workflow["state"]["phase"] == "investigating"
     assert workflow["state"]["transitions"][-1]["reason"] == "Review evidence"
+
+def test_recommended_actions_never_reuse_approval_across_incidents():
+    from src.incident_response.recommender import ResponseRecommender
+    from src.soc.correlation.incident_model import Incident
+    from src.shared.event_schema import Entity
+    service = ResponseService(MemoryResponseRepository(), [CountingBackend()])
+    recommender = ResponseRecommender()
+    plans = [recommender.recommend(Incident(incident_id=f'isolated-{i}', title='Synthetic brute force', severity='high', risk_score=80, primary_entity=Entity(ip=f'192.0.2.{i+1}'), tags=['brute_force'], mitre_techniques=['T1110'])) for i in range(2)]
+    first = service.add_plan(plans[0], 'analyst')
+    second = service.add_plan(plans[1], 'analyst')
+    one = next(r for r in first['approval_requests'] if r['action_type'] == 'block_ip')
+    two = next(r for r in second['approval_requests'] if r['action_type'] == 'block_ip')
+    assert one['action_id'] != two['action_id']
+    service.decide(one['request_id'], True, 'analyst', 'Synthetic review')
+    assert service.execute(one['action_id'], 'analyst')['result']['success']
+    with pytest.raises(ResponseError, match='approval'):
+        service.execute(two['action_id'], 'analyst')

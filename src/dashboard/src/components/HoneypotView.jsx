@@ -87,11 +87,11 @@ export default function HoneypotView() {
           <div className="hp-metric-card__lbl">Captured Sessions</div>
         </div>
         <div className="hp-metric-card">
-          <div className="hp-metric-card__val">{stats.unique_attackers || (sessions.length > 0 ? 1 : 0)}</div>
+          <div className="hp-metric-card__val">{stats.unique_attackers ?? 0}</div>
           <div className="hp-metric-card__lbl">Unique Attackers</div>
         </div>
         <div className="hp-metric-card">
-          <div className="hp-metric-card__val">{stats.total_credentials_tried || (sessions.length > 0 ? 1 : 0)}</div>
+          <div className="hp-metric-card__val">{stats.total_credentials_tried ?? 0}</div>
           <div className="hp-metric-card__lbl">Credentials Tested</div>
         </div>
         <div className="hp-metric-card">

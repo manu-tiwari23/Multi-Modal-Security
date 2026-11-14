@@ -1,5 +1,17 @@
 # DECISIONS.md
 
+## Phishing demo entry point (2026-11-14)
+
+Reuse the existing downloadable inert email as the analysis handoff source, loading it on demand. Email and URL actions prefill the analyzer; the separate campaign action publishes synthetic telemetry using the existing simulation API.
+
+## AbuseIPDB applicability (2026-11-14)
+
+Route only IP indicators to AbuseIPDB. Do not resolve domain/URL inputs silently: hosting-IP reputation is distinct from domain/URL reputation. Explain non-applicability in the UI and suppress older cached non-IP AbuseIPDB cards.
+
+## Chart sizing correction (2026-11-14)
+
+Keep Recharts' pixel-sized wrapper unconstrained by percentage max-width because its measuring parent intentionally has zero width. Contain responsive width on the outer container instead; remove the lab-specific measuring-wrapper override.
+
 ## Documentation decision — Academic report snapshot (2026-11-13)
 
 Use the current supplied mini-project template for structure and page geometry, the matching sample for typography, and the previous-year report only for presentation depth. Cover details are user supplied; submission month/year remains December 2026 from the template. Report software status as a 13 November 2026 snapshot, distinguishing historical passing checks, newer unverified construction and deferred work. Label generated concepts and the constructed UI representation rather than presenting them as real screenshots or completed hardware. Keep source DOCX files unchanged and deliver editable Word text/tables with separate PNG/SVG assets. This is a documentation choice and changes no implementation scope or software completion status.
@@ -542,3 +554,48 @@ Bound requests to 3 per question by default, 700 output tokens each, 24,000 UTF-
 
 
 
+
+## D050 — Executable identities and transaction lock ordering
+
+Executable response actions receive fresh UUIDs when instantiated from playbooks; template IDs cannot identify approval targets. Retried plan requests still return their existing durable plan. Database schema initialization commits separately before acquiring operational locks, avoiding DDL/correlation lock inversion. Verified by cross-incident approval and concurrent-worker integration tests.
+
+---
+
+## D051 — Phase 9 ESP32 Physical Alert System Implementation
+
+**Date:** 2026-11-14
+**Decision:**
+1. Implemented Phase 9 ESP32 Physical Alert System adhering strictly to `AGENTS.md` and `ARCHITECTURE.md` §4.10:
+   - `AlertNotifierService` (`src/alert_esp32/service.py`) connects to Mosquitto MQTT broker on `alerts/status` and publishes strictly sanitized metadata (`severity`, `incident_type`, `source`, `timestamp`). It NEVER transmits raw logs, IP addresses, credentials, or evidence.
+   - Built dual-folder compatibility (`src/alert_esp32/` and `src/alert-esp32/`) to resolve Python hyphenated module import limitations while preserving the repository specification.
+   - Firmware is written in C++ (`src/alert-esp32/firmware/mms_alert_esp32/mms_alert_esp32.ino`) and compiled directly with `arduino-cli` using the installed ESP32 core (`esp32:esp32:esp32`).
+   - Pinout: GPIO 18 (Green LED), GPIO 19 (Yellow LED), GPIO 21 (Red LED), GPIO 22 (Active Buzzer), GPIO 23 (Acknowledge Button with `INPUT_PULLUP`).
+   - Self-contained PubSubClient header and implementation bundled in sketch directory to eliminate OneDrive offline placeholder dependency issues.
+   - Created full circuit diagram, ASCII breadboard schematic, pinout connection table in `src/alert-esp32/circuit_diagram.md`, and automated batch flash script `src/alert-esp32/flash_firmware.bat` targeting COM6.
+2. Connected network systems addition:
+   - Added "+ Add Normal Node ({count})" and "Reset Nodes" buttons on the Dashboard Homepage Analyst Quick Actions bar and Globe HUD to dynamically instantiate green connected host nodes on the 3D topology globe.
+**Status:** Implemented, compiled with zero errors, unit tests passing (4/4), and verified.
+
+---
+
+## D052 — Safe presentation data belongs in Simulation Lab
+
+**Date:** 2026-11-14
+**Decision:** Make Simulation Lab the single dashboard entry point for demonstrations. Present five controlled scenarios, reserved RFC 5737/`.test` indicators and inert downloadable files, clearly label generated data as synthetic, and hand selected indicators into Phishing or Intelligence without automatically invoking external providers. Remove the standalone Detection Rules page from the dashboard because rules are an implementation detail; retain rule evidence within incident investigation and keep the backend rules API/detection engine unchanged.
+**Status:** Implemented and verified by production build, focused API tests and authenticated browser execution.
+
+---
+
+## D053 — Persistent Windows startup is infrastructure-first
+
+**Date:** 2026-11-14
+**Decision:** Document the supported local Windows startup as repository-root commands using `.venv312\Scripts\python.exe` directly. Redis, OpenSearch, PostgreSQL and MinIO must be healthy before Uvicorn starts; the persistent runtime must not be described as having an automatic in-memory fallback. First-account creation is an explicit one-time step, and protected simulations must use dashboard authentication or a cookie plus CSRF token.
+**Status:** Final — reproduced the failed storage state and verified the corrected sequence with an HTTP 200 health response.
+
+---
+
+## D054 — Demo topology is persistent synthetic telemetry
+
+**Date:** 2026-11-14
+**Decision:** Store analyst-added demo topology nodes in browser-local state so navigation and reloads do not erase the presentation. Assign only RFC 5737 `192.0.2.x` addresses, label them simulated, exclude them from observed-node counts, and publish a bounded `demo_node_activity` event through the normal backend pipeline. Add Simulation Lab analytics from the authoritative loaded event snapshot. Provide useful intelligence results only for the exact bundled demo indicators through a local `mms_demo_dataset` provider whose output and limitations explicitly state that scores are synthetic and non-external; do not rate arbitrary unknown indicators.
+**Status:** Implemented and verified by focused tests, production build and authenticated browser QA.

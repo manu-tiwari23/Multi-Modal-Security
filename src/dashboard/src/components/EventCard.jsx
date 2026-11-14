@@ -42,8 +42,16 @@ export default function EventCard({ event }) {
     <div
       className={`event-card event-card--${severity}`}
       onClick={() => setExpanded((prev) => !prev)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          setExpanded((prev) => !prev)
+        }
+      }}
       role="button"
       tabIndex={0}
+      aria-expanded={expanded}
+      aria-label={`${severity} ${eventType}${expanded ? ', collapse raw event' : ', expand raw event'}`}
       id={`event-${event.event_id}`}
     >
       {/* Header row */}

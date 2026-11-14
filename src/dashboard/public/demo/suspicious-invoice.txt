@@ -1,0 +1,8 @@
+MULTI MODAL SECURITY - INERT ATTACHMENT SAMPLE
+
+This file is safe demonstration content. It contains no executable code.
+
+Original display name: Invoice_Review_November.txt
+Claimed sender: billing@account-verification.example.test
+Referenced URL: http://secure-login.example.test/verify/account?session=demo
+Requested action: Sign in urgently and confirm payment details.
